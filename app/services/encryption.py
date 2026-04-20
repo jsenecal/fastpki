@@ -109,5 +109,7 @@ async def encrypt_existing_keys() -> None:
                     session.add(cert)
                     count += 1
 
+            await session.flush()
+
     if count > 0:
         logger.info("Encrypted %d existing plaintext private keys", count)

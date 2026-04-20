@@ -4,7 +4,7 @@ from cryptography.fernet import Fernet
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from app.db.models import CertificateAuthority, CertificateType
+from app.db.models import Certificate, CertificateAuthority, CertificateType
 from app.services.ca import CAService
 from app.services.cert import CertificateService
 from app.services.encryption import EncryptionService, encrypt_existing_keys
@@ -185,6 +185,93 @@ async def test_encrypt_existing_keys_idempotent(db: AsyncSession, monkeypatch):
     second_pass = result.scalar_one().private_key
 
     assert first_pass == second_pass
+
+
+@pytest.mark.asyncio
+async def test_encrypt_existing_keys_migrates_certificate_keys(
+    db: AsyncSession, monkeypatch
+):
+    """The Certificate branch of encrypt_existing_keys should also migrate."""
+    monkeypatch.setattr("app.db.session.engine", test_engine)
+
+    # Create a CA and a cert while encryption is disabled (plaintext keys).
+    monkeypatch.setattr(
+        "app.services.encryption.settings.PRIVATE_KEY_ENCRYPTION_KEY", None
+    )
+    ca_service = CAService(db)
+    ca = await ca_service.create_ca(
+        name="Cert Migration CA",
+        subject_dn="CN=Cert Migration CA,O=Test,C=US",
+        key_size=2048,
+        valid_days=3650,
+    )
+    cert_service = CertificateService(db)
+    cert = await cert_service.create_certificate(
+        ca_id=ca.id,
+        common_name="leaf.example.com",
+        subject_dn="CN=leaf.example.com,O=Test,C=US",
+        certificate_type=CertificateType.SERVER,
+        key_size=2048,
+        valid_days=365,
+    )
+    assert cert.private_key is not None
+    assert cert.private_key.startswith("-----BEGIN")
+    cert_id = cert.id
+
+    # Enable encryption and run migration.
+    monkeypatch.setattr(
+        "app.services.encryption.settings.PRIVATE_KEY_ENCRYPTION_KEY", TEST_KEY
+    )
+    await encrypt_existing_keys()
+
+    # Re-read from db to verify migration result.
+    db.expire_all()
+    result = await db.execute(select(Certificate).where(Certificate.id == cert_id))
+    migrated_cert = result.scalar_one()
+    assert migrated_cert.private_key is not None
+    assert EncryptionService.is_encrypted(migrated_cert.private_key)
+    decrypted = EncryptionService.decrypt_private_key(migrated_cert.private_key)
+    assert decrypted.startswith("-----BEGIN")
+
+
+@pytest.mark.asyncio
+async def test_encrypt_existing_keys_skips_cert_without_private_key(
+    db: AsyncSession, monkeypatch
+):
+    """Certificates with no stored private key should be skipped, not errored."""
+    monkeypatch.setattr("app.db.session.engine", test_engine)
+
+    monkeypatch.setattr(
+        "app.services.encryption.settings.PRIVATE_KEY_ENCRYPTION_KEY", None
+    )
+    ca_service = CAService(db)
+    ca = await ca_service.create_ca(
+        name="No-Key Cert CA",
+        subject_dn="CN=No-Key Cert CA,O=Test,C=US",
+        key_size=2048,
+        valid_days=3650,
+    )
+    cert_service = CertificateService(db)
+    cert = await cert_service.create_certificate(
+        ca_id=ca.id,
+        common_name="nokey.example.com",
+        subject_dn="CN=nokey.example.com,O=Test,C=US",
+        certificate_type=CertificateType.SERVER,
+        key_size=2048,
+        valid_days=365,
+        include_private_key=False,
+    )
+    assert cert.private_key is None
+    cert_id = cert.id
+
+    monkeypatch.setattr(
+        "app.services.encryption.settings.PRIVATE_KEY_ENCRYPTION_KEY", TEST_KEY
+    )
+    await encrypt_existing_keys()  # Must not raise.
+
+    db.expire_all()
+    result = await db.execute(select(Certificate).where(Certificate.id == cert_id))
+    assert result.scalar_one().private_key is None
 
 
 @pytest.mark.asyncio
