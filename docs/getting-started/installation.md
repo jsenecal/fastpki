@@ -31,7 +31,7 @@ mkdir -p data
 uvicorn app.main:app --reload
 ```
 
-The API is now available at `http://localhost:8000`. Interactive docs are at `http://localhost:8000/api/v1/docs`.
+The API is now available at `http://localhost:8000`. Interactive docs are at `http://localhost:8000/docs` when `ENABLE_DOCS=true` is set in your environment; they are disabled by default to avoid exposing the OpenAPI schema in production.
 
 ## CLI Tool
 

@@ -69,33 +69,47 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await gc_task
 
 
-app = FastAPI(
-    title=settings.PROJECT_NAME,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    lifespan=lifespan,
-)
+def create_app(enable_docs: bool | None = None) -> FastAPI:
+    """Build the FastPKI application.
 
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
-app.add_middleware(SlowAPIMiddleware)
+    When `enable_docs` is None, the value is taken from `settings.ENABLE_DOCS`.
+    Disabling docs sets `docs_url`, `redoc_url`, and `openapi_url` to None so
+    the OpenAPI schema and Swagger UI are not reachable.
+    """
+    docs_enabled = settings.ENABLE_DOCS if enable_docs is None else enable_docs
 
-# Set all CORS enabled origins
-if settings.BACKEND_CORS_ORIGINS:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+    application = FastAPI(
+        title=settings.PROJECT_NAME,
+        openapi_url=(f"{settings.API_V1_STR}/openapi.json" if docs_enabled else None),
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url="/redoc" if docs_enabled else None,
+        lifespan=lifespan,
     )
 
-app.add_middleware(SecurityHeadersMiddleware)
+    application.state.limiter = limiter
+    application.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+    application.add_middleware(SlowAPIMiddleware)
 
-app.include_router(api_router, prefix=settings.API_V1_STR)
-app.include_router(crl_router, prefix="/crl", tags=["pki"])
-app.include_router(ca_router, prefix="/ca", tags=["pki"])
+    if settings.BACKEND_CORS_ORIGINS:
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+    application.add_middleware(SecurityHeadersMiddleware)
+
+    application.include_router(api_router, prefix=settings.API_V1_STR)
+    application.include_router(crl_router, prefix="/crl", tags=["pki"])
+    application.include_router(ca_router, prefix="/ca", tags=["pki"])
+
+    @application.get("/")
+    async def root() -> dict[str, str]:
+        return {"message": "Welcome to FastPKI - API-based PKI management system."}
+
+    return application
 
 
-@app.get("/")
-async def root() -> dict[str, str]:
-    return {"message": "Welcome to FastPKI - API-based PKI management system."}
+app = create_app()

@@ -104,6 +104,11 @@ class Settings(BaseSettings):
     # Registration settings
     ALLOW_UNAUTHENTICATED_REGISTRATION: bool = False
 
+    # API documentation exposure
+    # Defaults to False so the OpenAPI schema isn't leaked in production. Set
+    # ENABLE_DOCS=true to expose /docs, /redoc, and /api/v1/openapi.json.
+    ENABLE_DOCS: bool = False
+
 
 settings = Settings()
 

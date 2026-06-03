@@ -143,8 +143,10 @@ The full user and reference documentation is published at [jsenecal.github.io/fa
 
 When the application is running, you can also access the automatic API documentation at:
 
-- Swagger UI: http://localhost:8000/api/v1/docs
-- ReDoc: http://localhost:8000/api/v1/redoc
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+
+These endpoints are disabled by default. Set `ENABLE_DOCS=true` in your environment to expose them (typically only in development).
 
 ## Authentication, Authorization & Permissions
 
