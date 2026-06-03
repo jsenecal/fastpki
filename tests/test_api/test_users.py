@@ -12,6 +12,7 @@ from app.api.deps import (
 from app.core.config import settings
 from app.db.models import User, UserRole
 from app.db.session import get_session
+from app.services.organization import OrganizationService
 from app.services.user import UserService
 from tests.conftest import TestAuth, create_test_app, get_test_session
 
@@ -344,6 +345,131 @@ async def test_regular_user_cannot_access_other_users(client, db):
 
     # Should be forbidden
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_read_user_in_other_organization(db: AsyncSession):
+    """Issue #9: an ADMIN must only see users within their own organization.
+
+    Previously the role-only check let an ADMIN in Org A read any user by ID,
+    leaking emails, capabilities, and org membership across boundaries.
+    """
+    org_service = OrganizationService(db)
+    org_a = await org_service.create_organization(name="OrgA9", description="A")
+    org_b = await org_service.create_organization(name="OrgB9", description="B")
+
+    user_service = UserService(db)
+    admin_a = await user_service.create_user(
+        username="admin_a_9",
+        email="admin_a_9@example.com",
+        password="password123",
+        role=UserRole.ADMIN,
+        organization_id=org_a.id,
+    )
+    user_b = await user_service.create_user(
+        username="user_b_9",
+        email="user_b_9@example.com",
+        password="password123",
+        role=UserRole.USER,
+        organization_id=org_b.id,
+    )
+
+    app = _app_for(admin_a)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.get(f"{settings.API_V1_STR}/users/{user_b.id}")
+        assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_can_read_user_in_own_organization(db: AsyncSession):
+    """An ADMIN must still be able to read users within their own organization."""
+    org_service = OrganizationService(db)
+    org_a = await org_service.create_organization(name="OrgA9Own", description="A")
+
+    user_service = UserService(db)
+    admin_a = await user_service.create_user(
+        username="admin_a_own_9",
+        email="admin_a_own_9@example.com",
+        password="password123",
+        role=UserRole.ADMIN,
+        organization_id=org_a.id,
+    )
+    user_a = await user_service.create_user(
+        username="user_a_own_9",
+        email="user_a_own_9@example.com",
+        password="password123",
+        role=UserRole.USER,
+        organization_id=org_a.id,
+    )
+
+    app = _app_for(admin_a)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.get(f"{settings.API_V1_STR}/users/{user_a.id}")
+        assert resp.status_code == 200
+        assert resp.json()["id"] == user_a.id
+
+
+@pytest.mark.asyncio
+async def test_superuser_can_still_read_users_across_organizations(db: AsyncSession):
+    """SUPERUSER retains cross-organization visibility."""
+    org_service = OrganizationService(db)
+    org_a = await org_service.create_organization(name="OrgA9Super", description="A")
+    org_b = await org_service.create_organization(name="OrgB9Super", description="B")
+
+    user_service = UserService(db)
+    su = await user_service.create_user(
+        username="su_9",
+        email="su_9@example.com",
+        password="password123",
+        role=UserRole.SUPERUSER,
+        organization_id=org_a.id,
+    )
+    user_b = await user_service.create_user(
+        username="user_b_super_9",
+        email="user_b_super_9@example.com",
+        password="password123",
+        role=UserRole.USER,
+        organization_id=org_b.id,
+    )
+
+    app = _app_for(su)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.get(f"{settings.API_V1_STR}/users/{user_b.id}")
+        assert resp.status_code == 200
+        assert resp.json()["id"] == user_b.id
+
+
+@pytest.mark.asyncio
+async def test_admin_without_organization_cannot_read_other_users(db: AsyncSession):
+    """An ADMIN with no organization assigned must not gain read access to
+    arbitrary users (defense-in-depth for the cross-org check)."""
+    org_service = OrganizationService(db)
+    org_b = await org_service.create_organization(name="OrgB9NoOrg", description="B")
+
+    user_service = UserService(db)
+    orphan_admin = await user_service.create_user(
+        username="orphan_admin_9",
+        email="orphan_admin_9@example.com",
+        password="password123",
+        role=UserRole.ADMIN,
+        organization_id=None,
+    )
+    user_b = await user_service.create_user(
+        username="user_b_noorg_9",
+        email="user_b_noorg_9@example.com",
+        password="password123",
+        role=UserRole.USER,
+        organization_id=org_b.id,
+    )
+
+    app = _app_for(orphan_admin)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.get(f"{settings.API_V1_STR}/users/{user_b.id}")
+        assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
