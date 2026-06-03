@@ -1,0 +1,116 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+template: |
+  ## Changes
+
+  $CHANGES
+
+  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
+
+categories:
+  - title: 'Added'
+    labels:
+      - 'feature'
+      - 'enhancement'
+  - title: 'Changed'
+    labels:
+      - 'change'
+      - 'refactor'
+      - 'performance'
+  - title: 'Deprecated'
+    labels:
+      - 'deprecation'
+  - title: 'Removed'
+    labels:
+      - 'removal'
+  - title: 'Fixed'
+    labels:
+      - 'bug'
+      - 'fix'
+  - title: 'Security'
+    labels:
+      - 'security'
+  - title: 'Documentation'
+    labels:
+      - 'documentation'
+  - title: 'Maintenance'
+    labels:
+      - 'chore'
+      - 'dependencies'
+      - 'ci'
+      - 'build'
+      - 'test'
+
+change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
+change-title-escapes: '\<*_&'
+
+version-resolver:
+  major:
+    labels:
+      - 'major'
+      - 'breaking'
+  minor:
+    labels:
+      - 'minor'
+      - 'feature'
+      - 'enhancement'
+  patch:
+    labels:
+      - 'patch'
+      - 'bug'
+      - 'fix'
+      - 'security'
+      - 'chore'
+      - 'dependencies'
+      - 'documentation'
+      - 'refactor'
+      - 'performance'
+      - 'change'
+      - 'ci'
+      - 'build'
+      - 'test'
+  default: patch
+
+autolabeler:
+  - label: 'breaking'
+    title:
+      - '/^[a-z]+(\(.+\))?!:/'
+    body:
+      - '/BREAKING[ -]CHANGE:/'
+  - label: 'feature'
+    title:
+      - '/^feat(\(.+\))?:/'
+  - label: 'fix'
+    title:
+      - '/^fix(\(.+\))?:/'
+  - label: 'security'
+    title:
+      - '/^security(\(.+\))?:/'
+  - label: 'documentation'
+    title:
+      - '/^docs(\(.+\))?:/'
+  - label: 'refactor'
+    title:
+      - '/^refactor(\(.+\))?:/'
+  - label: 'performance'
+    title:
+      - '/^perf(\(.+\))?:/'
+  - label: 'test'
+    title:
+      - '/^test(\(.+\))?:/'
+  - label: 'build'
+    title:
+      - '/^build(\(.+\))?:/'
+  - label: 'ci'
+    title:
+      - '/^ci(\(.+\))?:/'
+  - label: 'chore'
+    title:
+      - '/^chore(\(.+\))?:/'
+  - label: 'dependencies'
+    title:
+      - '/^(chore\(deps\)|deps)(\(.+\))?:/'
+
+exclude-labels:
+  - 'skip-changelog'
+  - 'no-release-notes'

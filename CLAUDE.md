@@ -112,6 +112,22 @@ The application supports both SQLite and PostgreSQL:
 - NEVER mention Claude, AI, LLMs, or include any AI-related signatures in commit messages
 - Do not include any "Co-Authored-By" statements
 
+### PR Titles and Release Notes
+
+PR titles should follow conventional commits — they drive automated labeling and release notes via Release Drafter (`.github/release-drafter.yml`, `.github/workflows/release-drafter.yml`).
+
+- Title prefix → autolabel → CHANGELOG section:
+  - `feat:` → `feature` → **Added**
+  - `fix:` → `fix` → **Fixed**
+  - `security:` → `security` → **Security**
+  - `docs:` → `documentation` → **Documentation**
+  - `refactor:` / `perf:` → `refactor` / `performance` → **Changed**
+  - `chore:` / `chore(deps):` / `ci:` / `build:` / `test:` → **Maintenance**
+  - `feat!:` / `fix!:` / `BREAKING CHANGE:` in body → `breaking` → forces major bump
+- Override the semver bump by adding a `major`, `minor`, or `patch` label to the PR.
+- Apply `skip-changelog` to exclude a PR from the drafted release notes (e.g. internal-only changes).
+- The draft release is updated on every push to `master`; publishing it triggers the `release` event in `ci.yml`, which builds the Docker image and publishes to PyPI.
+
 ### Test Workflow
 
 ```bash
