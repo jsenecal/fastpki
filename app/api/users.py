@@ -180,11 +180,22 @@ async def read_user_by_id(
             detail="User not found",
         )
 
-    # Regular users can only see their own profile
-    if (
-        current_user.role not in [UserRole.ADMIN, UserRole.SUPERUSER]
-        and current_user.id != user_id
+    # Organization-scoped visibility (issue #9):
+    # - SUPERUSER: any user across all orgs.
+    # - ADMIN: only users within their own organization (and they must have one).
+    # - USER: only their own profile.
+    is_self = current_user.id == user_id
+    if current_user.role == UserRole.SUPERUSER:
+        pass
+    elif (
+        current_user.role == UserRole.ADMIN and current_user.organization_id is not None
     ):
+        if user.organization_id != current_user.organization_id and not is_self:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not enough permissions",
+            )
+    elif not is_self:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
