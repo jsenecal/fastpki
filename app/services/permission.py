@@ -28,9 +28,7 @@ class PermissionService:
         ca = await self.db.get(CertificateAuthority, ca_id)
         if not ca:
             raise NotFoundError(f"Certificate Authority with ID {ca_id} not found")  # noqa: TRY003
-        if not self._user_can_perform(
-            user, ca.organization_id, ca.created_by_user_id, action
-        ):
+        if not self._user_can_perform(user, ca.organization_id, action):
             raise PermissionDeniedError("Insufficient permissions")  # noqa: TRY003
         return ca
 
@@ -40,9 +38,7 @@ class PermissionService:
         cert = await self.db.get(Certificate, cert_id)
         if not cert:
             raise NotFoundError(f"Certificate with ID {cert_id} not found")  # noqa: TRY003
-        if not self._user_can_perform(
-            user, cert.organization_id, cert.created_by_user_id, action
-        ):
+        if not self._user_can_perform(user, cert.organization_id, action):
             raise PermissionDeniedError("Insufficient permissions")  # noqa: TRY003
         return cert
 
@@ -50,33 +46,27 @@ class PermissionService:
     def _user_can_perform(
         user: User,
         resource_org_id: int | None,
-        resource_creator_id: int | None,
         action: PermissionAction,
     ) -> bool:
-        # 1. SUPERUSER -> always allowed
+        # Creator status (created_by_user_id) is retained for audit only;
+        # authorization derives strictly from role, org, and capability flags
+        # so that demotions, capability revocations, and org moves take effect
+        # for previously created resources (issue #7).
+
         if user.role == UserRole.SUPERUSER:
             return True
 
-        # 2. Resource creator -> always allowed
-        if resource_creator_id is not None and resource_creator_id == user.id:
-            return True
-
-        # 3. Unowned resource (org_id=None) -> superuser-only
         if resource_org_id is None:
             return False
 
-        # 4. Wrong org -> denied
         if user.organization_id != resource_org_id:
             return False
 
-        # 5. ADMIN in same org -> full access
         if user.role == UserRole.ADMIN:
             return True
 
-        # 6. USER with READ -> allowed in same org
         if action == PermissionAction.READ:
             return True
 
-        # 7. Check capability flag for write actions
         cap_attr = CAPABILITY_MAP.get(action)
         return bool(cap_attr and getattr(user, cap_attr, False))

@@ -30,7 +30,6 @@ async def create_ca(
     if not perm._user_can_perform(
         current_user,
         current_user.organization_id,
-        None,
         PermissionAction.CREATE_CA,
     ):
         raise HTTPException(

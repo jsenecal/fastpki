@@ -115,13 +115,53 @@ async def test_superuser_always_allowed_ca(db: AsyncSession, su, org_ca):
 
 
 @pytest.mark.asyncio
-async def test_resource_creator_always_allowed_ca(
+async def test_creator_without_capabilities_can_only_read_ca(
     db: AsyncSession, user_in_org, org_ca
 ):
+    """Creator status must not bypass capability checks (issue #7).
+
+    A user who created a CA but lacks the relevant capability flag must
+    still be denied write actions on it.
+    """
     perm = PermissionService(db)
-    for action in PermissionAction:
-        ca = await perm.check_ca_access(user_in_org, org_ca.id, action)
-        assert ca.id == org_ca.id
+
+    ca = await perm.check_ca_access(user_in_org, org_ca.id, PermissionAction.READ)
+    assert ca.id == org_ca.id
+
+    write_actions = [
+        PermissionAction.CREATE_CA,
+        PermissionAction.CREATE_CERT,
+        PermissionAction.REVOKE_CERT,
+        PermissionAction.EXPORT_PRIVATE_KEY,
+        PermissionAction.DELETE_CA,
+    ]
+    for action in write_actions:
+        with pytest.raises(PermissionDeniedError):
+            await perm.check_ca_access(user_in_org, org_ca.id, action)
+
+
+@pytest.mark.asyncio
+async def test_creator_loses_access_after_org_move_ca(
+    db: AsyncSession, other_org, org_ca
+):
+    """A creator moved to a different org loses access to their old resources."""
+    user_service = UserService(db)
+    moved_creator = await user_service.create_user(
+        username="movedcreator",
+        email="movedcreator@example.com",
+        password="password123",
+        role=UserRole.ADMIN,
+        organization_id=other_org.id,
+        can_export_private_key=True,
+    )
+    # Pretend this user originally created the CA before being moved.
+    org_ca.created_by_user_id = moved_creator.id
+    db.add(org_ca)
+    await db.commit()
+
+    perm = PermissionService(db)
+    with pytest.raises(PermissionDeniedError):
+        await perm.check_ca_access(moved_creator, org_ca.id, PermissionAction.READ)
 
 
 @pytest.mark.asyncio
@@ -222,14 +262,27 @@ async def test_superuser_always_allowed_cert(db: AsyncSession, su, org_cert):
 
 
 @pytest.mark.asyncio
-async def test_resource_creator_always_allowed_cert(
+async def test_creator_without_capabilities_denied_revoke_cert(
     db: AsyncSession, user_in_org, org_cert
 ):
+    """Creator of a certificate cannot revoke it without the capability flag."""
     perm = PermissionService(db)
-    cert = await perm.check_cert_access(
-        user_in_org, org_cert.id, PermissionAction.REVOKE_CERT
-    )
-    assert cert.id == org_cert.id
+    with pytest.raises(PermissionDeniedError):
+        await perm.check_cert_access(
+            user_in_org, org_cert.id, PermissionAction.REVOKE_CERT
+        )
+
+
+@pytest.mark.asyncio
+async def test_creator_without_capabilities_denied_export_key_cert(
+    db: AsyncSession, user_in_org, org_cert
+):
+    """EXPORT_PRIVATE_KEY must require the explicit capability even for creators."""
+    perm = PermissionService(db)
+    with pytest.raises(PermissionDeniedError):
+        await perm.check_cert_access(
+            user_in_org, org_cert.id, PermissionAction.EXPORT_PRIVATE_KEY
+        )
 
 
 @pytest.mark.asyncio
