@@ -220,3 +220,45 @@ async def test_security_headers_on_api_endpoint():
         response = await client.get("/api/v1/users/me")
         assert response.headers.get("x-content-type-options") == "nosniff"
         assert response.headers.get("x-frame-options") == "DENY"
+
+
+def test_enable_docs_default_is_false():
+    """ENABLE_DOCS must default to False so docs aren't exposed in production."""
+    from app.core.config import Settings
+
+    field = Settings.model_fields["ENABLE_DOCS"]
+    assert field.default is False, (
+        "ENABLE_DOCS default must be False to avoid leaking the OpenAPI schema"
+    )
+
+
+@pytest.mark.asyncio
+async def test_docs_endpoints_disabled_by_default():
+    """When ENABLE_DOCS is False, /docs, /redoc, and /openapi.json must 404."""
+    from app.main import create_app
+
+    test_app = create_app(enable_docs=False)
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        for path in ("/docs", "/redoc", "/api/v1/openapi.json"):
+            response = await client.get(path)
+            assert response.status_code == 404, (
+                f"{path} must return 404 when ENABLE_DOCS is False, "
+                f"got {response.status_code}"
+            )
+
+
+@pytest.mark.asyncio
+async def test_docs_endpoints_enabled_when_setting_is_true():
+    """When ENABLE_DOCS is True, /docs, /redoc, and /openapi.json must respond."""
+    from app.main import create_app
+
+    test_app = create_app(enable_docs=True)
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        for path in ("/docs", "/redoc", "/api/v1/openapi.json"):
+            response = await client.get(path)
+            assert response.status_code == 200, (
+                f"{path} must be reachable when ENABLE_DOCS is True, "
+                f"got {response.status_code}"
+            )

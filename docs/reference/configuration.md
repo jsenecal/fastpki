@@ -22,6 +22,7 @@ All settings are configured via environment variables and can be placed in a `.e
 | `LOG_LEVEL` | `str` | `INFO` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` | Application log level |
 | `BACKEND_CORS_ORIGINS` | `list[str]` | `["*"]` | — | Allowed CORS origins |
 | `ALLOW_UNAUTHENTICATED_REGISTRATION` | `bool` | `false` | — | Allow unauthenticated user registration. First user bootstrap always works regardless. |
+| `ENABLE_DOCS` | `bool` | `false` | — | When `true`, exposes `/docs` (Swagger UI), `/redoc`, and `/api/v1/openapi.json`. Disabled by default to avoid leaking the API schema in production. |
 
 ## Database URL Auto-Conversion
 

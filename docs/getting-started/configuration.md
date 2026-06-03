@@ -19,6 +19,7 @@ FastPKI is configured through environment variables. You can set them in a `.env
 | `LOG_LEVEL` | `str` | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`). |
 | `BACKEND_CORS_ORIGINS` | `list[str]` | `["*"]` | Allowed CORS origins. |
 | `ALLOW_UNAUTHENTICATED_REGISTRATION` | `bool` | `false` | Allow unauthenticated user registration. First user bootstrap always works. |
+| `ENABLE_DOCS` | `bool` | `false` | When `true`, exposes Swagger UI (`/docs`), ReDoc (`/redoc`), and the OpenAPI schema (`/api/v1/openapi.json`). Disabled by default to avoid leaking the API schema in production. |
 | `API_V1_STR` | `str` | `/api/v1` | URL prefix for all API routes. |
 | `PROJECT_NAME` | `str` | `FastPKI` | Name shown in the OpenAPI docs title. |
 
@@ -50,6 +51,9 @@ REFRESH_TOKEN_EXPIRE_MINUTES=1440
 
 # CORS
 BACKEND_CORS_ORIGINS=["*"]
+
+# API docs (Swagger UI / ReDoc / OpenAPI schema) — disabled by default
+# ENABLE_DOCS=true
 ```
 
 ## Generating a Fernet Encryption Key
