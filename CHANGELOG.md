@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Disable the OpenAPI schema, Swagger UI, and ReDoc endpoints by default. `/docs`, `/redoc`, and `/api/v1/openapi.json` now return 404 unless `ENABLE_DOCS=true` is set, preventing reconnaissance via the published schema in production deployments. ([#5])
+- Close the username/email enumeration on `POST /api/v1/users/`. The authentication and registration-policy checks now run before the uniqueness checks, so unauthenticated callers see the same generic "Unauthenticated registration is disabled" response regardless of whether the supplied username or email already exists. ([#8])
 
 ### Changed
 
@@ -28,3 +29,4 @@ notes start being recorded here from this changelog forward.
 [Unreleased]: https://github.com/jsenecal/fastpki/compare/v0.3.5...HEAD
 [0.3.5]: https://github.com/jsenecal/fastpki/releases/tag/v0.3.5
 [#5]: https://github.com/jsenecal/fastpki/issues/5
+[#8]: https://github.com/jsenecal/fastpki/issues/8

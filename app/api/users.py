@@ -31,24 +31,6 @@ async def create_user(
     logger.debug("Create user request for username: %s", user_in.username)
     user_service = UserService(db)
 
-    # Check if username already exists
-    db_user = await user_service.get_user_by_username(username=user_in.username)
-    if db_user:
-        logger.info("Create user failed: username already exists: %s", user_in.username)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered",
-        )
-
-    # Check if email already exists
-    db_user = await user_service.get_user_by_email(email=user_in.email)
-    if db_user:
-        logger.info("Create user failed: email already exists: %s", user_in.email)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered",
-        )
-
     # Set current_user if token is provided
     current_user = None
     if token:
@@ -72,7 +54,9 @@ async def create_user(
 
     logger.debug("First user check: %s", first_user)
 
-    # If not the first user and not authenticated, check registration policy
+    # Authentication / registration-policy gate must run BEFORE any
+    # uniqueness checks so unauthenticated callers cannot enumerate
+    # existing usernames or emails via differing error messages (issue #8).
     if not first_user and current_user is None:
         # Elevated roles always require authentication
         if user_in.role in [UserRole.ADMIN, UserRole.SUPERUSER]:
@@ -106,6 +90,25 @@ async def create_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions to create admin or superuser accounts",
+        )
+
+    # Uniqueness checks happen after the auth/policy gate so that error
+    # messages do not differ for unauthenticated callers based on whether
+    # the supplied username or email already exists (issue #8).
+    db_user = await user_service.get_user_by_username(username=user_in.username)
+    if db_user:
+        logger.info("Create user failed: username already exists: %s", user_in.username)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already registered",
+        )
+
+    db_user = await user_service.get_user_by_email(email=user_in.email)
+    if db_user:
+        logger.info("Create user failed: email already exists: %s", user_in.email)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered",
         )
 
     # Create the user

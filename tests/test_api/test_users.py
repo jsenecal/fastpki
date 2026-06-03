@@ -60,23 +60,35 @@ async def test_create_user(client):
 
 @pytest.mark.asyncio
 async def test_create_user_duplicate_username(client):
-    # Create a user
+    # Bootstrap a superuser (first user) and authenticate so that we exercise
+    # the duplicate-username branch rather than the unauthenticated-registration
+    # policy gate.
+    superuser_data = {
+        "username": "superdup",
+        "email": "superdup@example.com",
+        "password": "superpass",
+        "role": UserRole.SUPERUSER.value,
+    }
+    await client.post("/api/v1/users/", json=superuser_data)
+    login_response = await client.post(
+        "/api/v1/auth/token", data={"username": "superdup", "password": "superpass"}
+    )
+    token = login_response.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
     user_data = {
         "username": "duplicate",
         "email": "dup1@example.com",
         "password": "password123",
     }
+    await client.post("/api/v1/users/", json=user_data, headers=headers)
 
-    await client.post("/api/v1/users/", json=user_data)
-
-    # Try to create another user with the same username
     duplicate_data = {
         "username": "duplicate",
         "email": "dup2@example.com",
         "password": "password456",
     }
-
-    response = await client.post("/api/v1/users/", json=duplicate_data)
+    response = await client.post("/api/v1/users/", json=duplicate_data, headers=headers)
 
     assert response.status_code == 400
     data = response.json()
@@ -86,28 +98,111 @@ async def test_create_user_duplicate_username(client):
 
 @pytest.mark.asyncio
 async def test_create_user_duplicate_email(client):
-    # Create a user
+    superuser_data = {
+        "username": "superdupemail",
+        "email": "superdupemail@example.com",
+        "password": "superpass",
+        "role": UserRole.SUPERUSER.value,
+    }
+    await client.post("/api/v1/users/", json=superuser_data)
+    login_response = await client.post(
+        "/api/v1/auth/token",
+        data={"username": "superdupemail", "password": "superpass"},
+    )
+    token = login_response.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
     user_data = {
         "username": "emailuser1",
         "email": "same@example.com",
         "password": "password123",
     }
+    await client.post("/api/v1/users/", json=user_data, headers=headers)
 
-    await client.post("/api/v1/users/", json=user_data)
-
-    # Try to create another user with the same email
     duplicate_data = {
         "username": "emailuser2",
         "email": "same@example.com",
         "password": "password456",
     }
-
-    response = await client.post("/api/v1/users/", json=duplicate_data)
+    response = await client.post("/api/v1/users/", json=duplicate_data, headers=headers)
 
     assert response.status_code == 400
     data = response.json()
     assert "detail" in data
     assert data["detail"] == "Email already registered"
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_registration_does_not_leak_username_existence(client):
+    """Issue #8: unauthenticated registration must return the same generic
+    error regardless of whether the supplied username/email already exists,
+    so attackers cannot enumerate accounts via the registration endpoint.
+    """
+    # Bootstrap a superuser (first user, no policy gate) so a known account exists.
+    superuser_data = {
+        "username": "enumadmin",
+        "email": "enumadmin@example.com",
+        "password": "superpass",
+        "role": UserRole.SUPERUSER.value,
+    }
+    await client.post("/api/v1/users/", json=superuser_data)
+
+    # Unauthenticated probe using an existing username.
+    existing_probe = await client.post(
+        "/api/v1/users/",
+        json={
+            "username": "enumadmin",
+            "email": "attacker@example.com",
+            "password": "password123",
+        },
+    )
+    # Unauthenticated probe using a fresh username.
+    fresh_probe = await client.post(
+        "/api/v1/users/",
+        json={
+            "username": "doesnotexist",
+            "email": "fresh@example.com",
+            "password": "password123",
+        },
+    )
+
+    assert existing_probe.status_code == fresh_probe.status_code
+    assert existing_probe.json()["detail"] == fresh_probe.json()["detail"]
+    # Sanity-check that we hit the registration-policy gate, not a stale 400.
+    assert existing_probe.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_registration_does_not_leak_email_existence(client):
+    """Issue #8: same as username — email existence must not leak either."""
+    superuser_data = {
+        "username": "emailenum",
+        "email": "emailenum@example.com",
+        "password": "superpass",
+        "role": UserRole.SUPERUSER.value,
+    }
+    await client.post("/api/v1/users/", json=superuser_data)
+
+    existing_probe = await client.post(
+        "/api/v1/users/",
+        json={
+            "username": "freshname1",
+            "email": "emailenum@example.com",
+            "password": "password123",
+        },
+    )
+    fresh_probe = await client.post(
+        "/api/v1/users/",
+        json={
+            "username": "freshname2",
+            "email": "neveruse@example.com",
+            "password": "password123",
+        },
+    )
+
+    assert existing_probe.status_code == fresh_probe.status_code
+    assert existing_probe.json()["detail"] == fresh_probe.json()["detail"]
+    assert existing_probe.status_code == 403
 
 
 @pytest.mark.asyncio
