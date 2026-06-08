@@ -61,10 +61,10 @@ docs-serve:
 
 # Version bumping
 bump-patch:
-	uv run bumpver update --patch
+	uv run bump-my-version bump patch
 
 bump-minor:
-	uv run bumpver update --minor
+	uv run bump-my-version bump minor
 
 bump-major:
-	uv run bumpver update --major
+	uv run bump-my-version bump major
