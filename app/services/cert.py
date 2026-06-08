@@ -1,5 +1,6 @@
 import ipaddress
 import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -24,7 +25,11 @@ from app.db.models import (
 )
 from app.services.ca import CAService
 from app.services.encryption import EncryptionService
-from app.services.exceptions import LeafCertNotAllowedError
+from app.services.exceptions import (
+    CsrNotAllowedError,
+    CsrRequiredError,
+    LeafCertNotAllowedError,
+)
 
 UTC = ZoneInfo("UTC")
 
@@ -35,6 +40,32 @@ CertPublicKey = (
     | EllipticCurvePublicKey
     | RSAPublicKey
 )
+
+
+@dataclass
+class ResolvedCsrFields:
+    """Effective issuance fields for a CSR sign request (post-override)."""
+
+    common_name: str
+    subject_dn: str
+    san_dns_names: list[str] | None
+    san_ip_addresses: list[str] | None
+    san_email_addresses: list[str] | None
+    public_key: CertPublicKey
+
+
+@dataclass
+class RenewalParams:
+    """Issuance parameters inherited from a predecessor certificate."""
+
+    common_name: str
+    subject_dn: str
+    san_dns_names: list[str] | None
+    san_ip_addresses: list[str] | None
+    san_email_addresses: list[str] | None
+    ca_id: int
+    certificate_type: CertificateType
+    valid_days: int
 
 
 class CertificateService:
@@ -52,11 +83,13 @@ class CertificateService:
         include_private_key: bool = True,
         organization_id: int | None = None,
         created_by_user_id: int | None = None,
+        created_by_service_account_id: int | None = None,
         base_url: str | None = None,
         san_dns_names: list[str] | None = None,
         san_ip_addresses: list[str] | None = None,
         san_email_addresses: list[str] | None = None,
         public_key: CertPublicKey | None = None,
+        renewed_from_id: int | None = None,
     ) -> Certificate:
         """Create a new certificate signed by the specified CA."""
         key_size = key_size or settings.CERT_KEY_SIZE
@@ -275,6 +308,9 @@ class CertificateService:
             issuer_id=ca_id,
             organization_id=organization_id,
             created_by_user_id=created_by_user_id,
+            created_by_service_account_id=created_by_service_account_id,
+            is_csr_origin=public_key is not None,
+            renewed_from_id=renewed_from_id,
         )
 
         self.db.add(cert)
@@ -315,25 +351,24 @@ class CertificateService:
             pass
         return dns_names, ip_addresses, email_addresses
 
-    async def sign_csr(
+    def resolve_csr_fields(
         self,
         csr_pem: str,
-        ca_id: int,
-        certificate_type: CertificateType,
-        valid_days: int | None = None,
+        *,
         common_name: str | None = None,
         subject_dn: str | None = None,
         san_dns_names: list[str] | None = None,
         san_ip_addresses: list[str] | None = None,
         san_email_addresses: list[str] | None = None,
-        organization_id: int | None = None,
-        created_by_user_id: int | None = None,
-        base_url: str | None = None,
-    ) -> Certificate:
-        """Sign a CSR. Extracts defaults from the CSR; explicit params override."""
+    ) -> ResolvedCsrFields:
+        """Resolve the effective issuance fields for a CSR sign request.
+
+        Extracts the subject and SANs from the CSR, then applies any explicit
+        overrides. Returned values are exactly what the issued certificate will
+        carry, so callers (e.g. policy enforcement) can inspect them up front.
+        """
         csr = self.parse_csr(csr_pem)
 
-        # Extract defaults from CSR
         csr_cn_attrs = csr.subject.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)
         csr_cn = csr_cn_attrs[0].value if csr_cn_attrs else ""
         oid_to_short = {
@@ -351,39 +386,172 @@ class CertificateService:
         csr_subject_dn = ",".join(csr_subject_parts)
         csr_dns, csr_ips, csr_emails = self.extract_csr_san_names(csr)
 
-        # Apply overrides
-        effective_cn = common_name or csr_cn
-        effective_subject_dn = subject_dn or csr_subject_dn
-        effective_dns = (
-            san_dns_names if san_dns_names is not None else (csr_dns or None)
-        )
-        effective_ips = (
-            san_ip_addresses if san_ip_addresses is not None else (csr_ips or None)
-        )
-        effective_emails = (
-            san_email_addresses
-            if san_email_addresses is not None
-            else (csr_emails or None)
+        return ResolvedCsrFields(
+            common_name=common_name or csr_cn,
+            subject_dn=subject_dn or csr_subject_dn,
+            san_dns_names=(
+                san_dns_names if san_dns_names is not None else (csr_dns or None)
+            ),
+            san_ip_addresses=(
+                san_ip_addresses if san_ip_addresses is not None else (csr_ips or None)
+            ),
+            san_email_addresses=(
+                san_email_addresses
+                if san_email_addresses is not None
+                else (csr_emails or None)
+            ),
+            public_key=csr.public_key(),
         )
 
-        if not effective_cn:
+    async def sign_csr(
+        self,
+        csr_pem: str,
+        ca_id: int,
+        certificate_type: CertificateType,
+        valid_days: int | None = None,
+        common_name: str | None = None,
+        subject_dn: str | None = None,
+        san_dns_names: list[str] | None = None,
+        san_ip_addresses: list[str] | None = None,
+        san_email_addresses: list[str] | None = None,
+        organization_id: int | None = None,
+        created_by_user_id: int | None = None,
+        created_by_service_account_id: int | None = None,
+        base_url: str | None = None,
+    ) -> Certificate:
+        """Sign a CSR. Extracts defaults from the CSR; explicit params override."""
+        fields = self.resolve_csr_fields(
+            csr_pem,
+            common_name=common_name,
+            subject_dn=subject_dn,
+            san_dns_names=san_dns_names,
+            san_ip_addresses=san_ip_addresses,
+            san_email_addresses=san_email_addresses,
+        )
+
+        if not fields.common_name:
             raise ValueError("No common name in CSR or request")  # noqa: TRY003
 
         return await self.create_certificate(
             ca_id=ca_id,
-            common_name=effective_cn,
-            subject_dn=effective_subject_dn,
+            common_name=fields.common_name,
+            subject_dn=fields.subject_dn,
             certificate_type=certificate_type,
             valid_days=valid_days,
             include_private_key=False,
             organization_id=organization_id,
             created_by_user_id=created_by_user_id,
+            created_by_service_account_id=created_by_service_account_id,
             base_url=base_url,
-            san_dns_names=effective_dns,
-            san_ip_addresses=effective_ips,
-            san_email_addresses=effective_emails,
-            public_key=csr.public_key(),
+            san_dns_names=fields.san_dns_names,
+            san_ip_addresses=fields.san_ip_addresses,
+            san_email_addresses=fields.san_email_addresses,
+            public_key=fields.public_key,
         )
+
+    @staticmethod
+    def extract_cert_san_names(
+        certificate_pem: str,
+    ) -> tuple[list[str], list[str], list[str]]:
+        """Extract DNS, IP, and email SANs from a certificate PEM."""
+        cert = x509.load_pem_x509_certificate(certificate_pem.encode("utf-8"))
+        dns: list[str] = []
+        ips: list[str] = []
+        emails: list[str] = []
+        try:
+            san = cert.extensions.get_extension_for_class(
+                x509.SubjectAlternativeName
+            ).value
+        except x509.ExtensionNotFound:
+            return dns, ips, emails
+        dns = san.get_values_for_type(x509.DNSName)
+        ips = [str(ip) for ip in san.get_values_for_type(x509.IPAddress)]
+        emails = san.get_values_for_type(x509.RFC822Name)
+        return dns, ips, emails
+
+    def inherited_renewal_params(self, predecessor: Certificate) -> RenewalParams:
+        """Compute the issuance parameters a renewal inherits from a predecessor.
+
+        Subject, SANs, CA, type, and the original validity *duration* are
+        inherited; the renewed certificate starts now.
+        """
+        if predecessor.issuer_id is None:
+            raise ValueError("Certificate has no issuer and cannot be renewed")  # noqa: TRY003
+        dns, ips, emails = self.extract_cert_san_names(predecessor.certificate)
+        return RenewalParams(
+            common_name=predecessor.common_name,
+            subject_dn=predecessor.subject_dn,
+            san_dns_names=dns or None,
+            san_ip_addresses=ips or None,
+            san_email_addresses=emails or None,
+            ca_id=predecessor.issuer_id,
+            certificate_type=predecessor.certificate_type,
+            valid_days=predecessor.valid_days,
+        )
+
+    async def renew_certificate(
+        self,
+        cert_id: int,
+        *,
+        csr_pem: str | None = None,
+        organization_id: int | None = None,
+        created_by_user_id: int | None = None,
+        created_by_service_account_id: int | None = None,
+        base_url: str | None = None,
+    ) -> Certificate:
+        """Issue a new certificate based on an existing one, recording lineage.
+
+        Empty ``csr_pem`` renews a server-key certificate (mints a fresh key
+        pair). A CSR renews a CSR-origin certificate; its subject is ignored —
+        subject/SANs/CA/type are inherited from the predecessor.
+        """
+        predecessor = await self.db.get(Certificate, cert_id)
+        if predecessor is None:
+            raise ValueError(f"Certificate with ID {cert_id} not found")  # noqa: TRY003
+
+        params = self.inherited_renewal_params(predecessor)
+
+        public_key: CertPublicKey | None = None
+        include_private_key = False
+        if csr_pem is None:
+            if predecessor.is_csr_origin:
+                raise CsrRequiredError(  # noqa: TRY003
+                    "This certificate was issued from a CSR; a CSR is required"
+                )
+            include_private_key = True
+        else:
+            if not predecessor.is_csr_origin:
+                raise CsrNotAllowedError(  # noqa: TRY003
+                    "This certificate uses a server-generated key; a CSR is not allowed"
+                )
+            public_key = self.parse_csr(csr_pem).public_key()
+
+        return await self.create_certificate(
+            ca_id=params.ca_id,
+            common_name=params.common_name,
+            subject_dn=params.subject_dn,
+            certificate_type=params.certificate_type,
+            valid_days=params.valid_days,
+            include_private_key=include_private_key,
+            organization_id=organization_id,
+            created_by_user_id=created_by_user_id,
+            created_by_service_account_id=created_by_service_account_id,
+            base_url=base_url,
+            san_dns_names=params.san_dns_names,
+            san_ip_addresses=params.san_ip_addresses,
+            san_email_addresses=params.san_email_addresses,
+            public_key=public_key,
+            renewed_from_id=cert_id,
+        )
+
+    async def get_renewed_to_ids(self, cert_id: int) -> list[int]:
+        """Return the IDs of certificates renewed from the given certificate."""
+        result = await self.db.execute(
+            select(Certificate.id)
+            .where(Certificate.renewed_from_id == cert_id)
+            .order_by(Certificate.id)  # type: ignore[arg-type]
+        )
+        return list(result.scalars().all())
 
     async def get_certificate(self, cert_id: int) -> Certificate | None:
         """Get a certificate by ID."""

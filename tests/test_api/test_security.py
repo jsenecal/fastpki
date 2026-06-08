@@ -5,6 +5,7 @@ from app.api.deps import (
     get_current_active_admin_user,
     get_current_active_superuser,
     get_current_active_user,
+    get_current_principal,
     get_current_user,
 )
 from app.db.models import User, UserRole
@@ -12,7 +13,12 @@ from app.db.session import get_session
 from app.main import app
 from app.services.organization import OrganizationService
 from app.services.user import UserService
-from tests.conftest import TestAuth, create_test_app, get_test_session
+from tests.conftest import (
+    TestAuth,
+    TestPrincipalAuth,
+    create_test_app,
+    get_test_session,
+)
 
 real_app = app
 
@@ -74,6 +80,7 @@ def _app_for(user: User):
     test_app.dependency_overrides[get_current_active_user] = TestAuth(user)
     test_app.dependency_overrides[get_current_active_superuser] = TestAuth(user)
     test_app.dependency_overrides[get_current_active_admin_user] = TestAuth(user)
+    test_app.dependency_overrides[get_current_principal] = TestPrincipalAuth(user)
     return test_app
 
 

@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Column, DateTime
+from sqlalchemy import JSON, Column, DateTime, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 UTC = ZoneInfo("UTC")
@@ -52,6 +52,11 @@ class AuditAction(str, Enum):
     ORG_DELETE = "org_delete"
     ORG_ADD_USER = "org_add_user"
     ORG_REMOVE_USER = "org_remove_user"
+    SERVICE_ACCOUNT_CREATE = "service_account_create"
+    SERVICE_ACCOUNT_UPDATE = "service_account_update"
+    SERVICE_ACCOUNT_DELETE = "service_account_delete"
+    SERVICE_ACCOUNT_TOKEN_CREATE = "service_account_token_create"
+    SERVICE_ACCOUNT_TOKEN_REVOKE = "service_account_token_revoke"
 
 
 class Organization(SQLModel, table=True):
@@ -112,6 +117,9 @@ class CertificateAuthority(CertificateAuthorityBase, table=True):
 
     organization_id: int | None = Field(default=None, foreign_key="organizations.id")
     created_by_user_id: int | None = Field(default=None, foreign_key="users.id")
+    created_by_service_account_id: int | None = Field(
+        default=None, foreign_key="service_accounts.id"
+    )
 
     parent_ca_id: int | None = Field(
         default=None, foreign_key="certificate_authorities.id"
@@ -183,6 +191,15 @@ class Certificate(CertificateBase, table=True):
 
     organization_id: int | None = Field(default=None, foreign_key="organizations.id")
     created_by_user_id: int | None = Field(default=None, foreign_key="users.id")
+    created_by_service_account_id: int | None = Field(
+        default=None, foreign_key="service_accounts.id"
+    )
+
+    # True when issued from an externally supplied CSR (server never held the
+    # private key); governs how the certificate may be renewed.
+    is_csr_origin: bool = Field(default=False)
+    # Lineage: the certificate this one was renewed from, if any.
+    renewed_from_id: int | None = Field(default=None, foreign_key="certificates.id")
 
 
 class CRLEntry(SQLModel, table=True):
@@ -246,6 +263,102 @@ class User(SQLModel, table=True):
     organization: Organization | None = Relationship(back_populates="users")
 
 
+class ServiceAccount(SQLModel, table=True):
+    __tablename__ = "service_accounts"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "name", name="uq_service_account_org_name"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    description: str | None = None
+    created_at: datetime = Field(
+        sa_column=Column(
+            DateTime(timezone=True),
+            nullable=False,
+            default=lambda: datetime.now(UTC),
+        )
+    )
+    updated_at: datetime = Field(
+        sa_column=Column(
+            DateTime(timezone=True),
+            nullable=False,
+            default=lambda: datetime.now(UTC),
+            onupdate=lambda: datetime.now(UTC),
+        )
+    )
+    disabled_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+
+    can_create_ca: bool = Field(default=False)
+    can_create_cert: bool = Field(default=False)
+    can_revoke_cert: bool = Field(default=False)
+    can_export_private_key: bool = Field(default=False)
+    can_delete_ca: bool = Field(default=False)
+
+    organization_id: int = Field(foreign_key="organizations.id", index=True)
+    created_by_user_id: int | None = Field(default=None, foreign_key="users.id")
+
+
+class ServiceAccountToken(SQLModel, table=True):
+    __tablename__ = "service_account_tokens"
+
+    id: int | None = Field(default=None, primary_key=True)
+    service_account_id: int = Field(foreign_key="service_accounts.id", index=True)
+    public_id: str = Field(index=True, unique=True)
+    digest: str
+    pepper_version: int = Field(default=1)
+    name: str | None = None
+    created_at: datetime = Field(
+        sa_column=Column(
+            DateTime(timezone=True),
+            nullable=False,
+            default=lambda: datetime.now(UTC),
+        )
+    )
+    last_used_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+    expires_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+    revoked: bool = Field(default=False)
+
+
+class IssuancePolicy(SQLModel, table=True):
+    __tablename__ = "issuance_policies"
+
+    id: int | None = Field(default=None, primary_key=True)
+    service_account_id: int = Field(
+        foreign_key="service_accounts.id", index=True, unique=True
+    )
+    cn_patterns: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    san_dns_patterns: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    san_ip_cidrs: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    san_email_domains: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    allowed_ca_ids: list[int] = Field(default_factory=list, sa_column=Column(JSON))
+    allowed_certificate_types: list[str] = Field(
+        default_factory=list, sa_column=Column(JSON)
+    )
+    max_validity_days: int
+    created_at: datetime = Field(
+        sa_column=Column(
+            DateTime(timezone=True),
+            nullable=False,
+            default=lambda: datetime.now(UTC),
+        )
+    )
+    updated_at: datetime = Field(
+        sa_column=Column(
+            DateTime(timezone=True),
+            nullable=False,
+            default=lambda: datetime.now(UTC),
+            onupdate=lambda: datetime.now(UTC),
+        )
+    )
+
+
 class BlocklistedToken(SQLModel, table=True):
     __tablename__ = "blocklisted_tokens"
 
@@ -295,6 +408,10 @@ class AuditLog(SQLModel, table=True):
     action: AuditAction = Field(index=True)
     user_id: int | None = Field(default=None, foreign_key="users.id", index=True)
     username: str | None = None
+    service_account_id: int | None = Field(
+        default=None, foreign_key="service_accounts.id", index=True
+    )
+    service_account_name: str | None = None
     organization_id: int | None = Field(
         default=None, foreign_key="organizations.id", index=True
     )

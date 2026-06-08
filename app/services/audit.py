@@ -4,11 +4,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.db.models import AuditAction, AuditLog
+from app.services.principal import Principal
 
 
 class AuditService:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    @staticmethod
+    def actor_fields(principal: Principal) -> dict[str, object | None]:
+        """Map a principal to the audit actor columns for its kind."""
+        if principal.kind == "service_account":
+            return {
+                "service_account_id": principal.id,
+                "service_account_name": principal.display_name,
+            }
+        return {"user_id": principal.id, "username": principal.display_name}
 
     async def log_action(
         self,
@@ -19,6 +30,8 @@ class AuditService:
         resource_type: str | None = None,
         resource_id: int | None = None,
         detail: str | None = None,
+        service_account_id: int | None = None,
+        service_account_name: str | None = None,
     ) -> AuditLog:
         entry = AuditLog(
             action=action,
@@ -28,6 +41,8 @@ class AuditService:
             resource_type=resource_type,
             resource_id=resource_id,
             detail=detail,
+            service_account_id=service_account_id,
+            service_account_name=service_account_name,
         )
         self.db.add(entry)
         await self.db.commit()
