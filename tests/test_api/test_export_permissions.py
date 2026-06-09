@@ -8,6 +8,7 @@ from app.api.deps import (
     get_current_active_admin_user,
     get_current_active_superuser,
     get_current_active_user,
+    get_current_principal,
     get_current_user,
 )
 from app.core.config import settings
@@ -17,7 +18,12 @@ from app.services.ca import CAService
 from app.services.cert import CertificateService
 from app.services.organization import OrganizationService
 from app.services.user import UserService
-from tests.conftest import TestAuth, create_test_app, get_test_session
+from tests.conftest import (
+    TestAuth,
+    TestPrincipalAuth,
+    create_test_app,
+    get_test_session,
+)
 
 
 def _app_for(user: User) -> FastAPI:
@@ -27,6 +33,7 @@ def _app_for(user: User) -> FastAPI:
     app.dependency_overrides[get_current_active_user] = TestAuth(user)
     app.dependency_overrides[get_current_active_superuser] = TestAuth(user)
     app.dependency_overrides[get_current_active_admin_user] = TestAuth(user)
+    app.dependency_overrides[get_current_principal] = TestPrincipalAuth(user)
     return app
 
 

@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.db.models import User, UserRole
 from app.db.session import get_session
 from app.schemas.user import TokenPayload
+from app.services.principal import Principal
 
 UTC = ZoneInfo("UTC")
 
@@ -83,6 +84,33 @@ async def get_current_active_user(
     if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
+
+
+async def get_current_principal(
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+    token: str = Depends(oauth2_scheme),
+) -> Principal:
+    """Resolve a bearer token to a Principal — a user or a service account.
+
+    Service-account tokens (prefixed `fpki_sa_`) resolve to a service principal;
+    anything else falls through to the existing user-JWT path unchanged.
+    """
+    from app.services.service_account import TOKEN_PREFIX, ServiceAccountService
+
+    if token.startswith(TOKEN_PREFIX):
+        sa = await ServiceAccountService(db).resolve_token(token)
+        if sa is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return Principal.from_service_account(sa)
+
+    user, _payload = await _validate_token(db, token)
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return Principal.from_user(user)
 
 
 async def get_current_active_superuser(

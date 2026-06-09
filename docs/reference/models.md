@@ -159,3 +159,69 @@ This page documents the database models and enumerations used by FastPKI.
 | `resource_type` | `str` | Nullable | Type of affected resource |
 | `resource_id` | `int` | Nullable | ID of affected resource |
 | `detail` | `str` | Nullable | Human-readable description |
+
+### `ServiceAccount`
+
+A non-human principal that holds API tokens, scoped to one organization. See the
+[Service Accounts guide](../guides/service-accounts.md).
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | `int` | Primary key | Auto-increment ID |
+| `name` | `str` | Indexed; unique per org | Service account name |
+| `description` | `str` | Nullable | Free text |
+| `organization_id` | `int` | FK → `organizations.id`, indexed | Owning organization |
+| `created_by_user_id` | `int` | FK → `users.id`, nullable | User who created it |
+| `created_at` / `updated_at` | `datetime` | — | Timestamps (UTC) |
+| `disabled_at` | `datetime` | Nullable | When disabled (`null` = enabled) |
+| `can_create_ca` | `bool` | Default `false` | Capability flag |
+| `can_create_cert` | `bool` | Default `false` | Capability flag |
+| `can_revoke_cert` | `bool` | Default `false` | Capability flag |
+| `can_export_private_key` | `bool` | Default `false` | Capability flag |
+| `can_delete_ca` | `bool` | Default `false` | Capability flag |
+
+A unique constraint on `(organization_id, name)` enforces per-org name uniqueness.
+
+### `ServiceAccountToken`
+
+A bearer credential for a service account. Only a salted HMAC-SHA256 digest is
+stored; the plaintext (`fpki_sa_<public_id>.<secret>`) is shown once at creation.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | `int` | Primary key | Auto-increment ID |
+| `service_account_id` | `int` | FK → `service_accounts.id`, indexed | Owning account |
+| `public_id` | `str` | Indexed, unique | Lookup handle (the `<public_id>` part) |
+| `digest` | `str` | — | Hex HMAC-SHA256 of the secret, peppered |
+| `pepper_version` | `int` | Default `1` | Pepper version (for rotation) |
+| `name` | `str` | Nullable | Human label |
+| `created_at` | `datetime` | — | Creation timestamp (UTC) |
+| `last_used_at` | `datetime` | Nullable | Last successful auth |
+| `expires_at` | `datetime` | Nullable | Expiry (`null` = non-expiring) |
+| `revoked` | `bool` | Default `false` | Whether revoked |
+
+!!! note "Resource ownership"
+    `CertificateAuthority` and `Certificate` carry a nullable
+    `created_by_service_account_id` (FK → `service_accounts.id`) alongside
+    `created_by_user_id`, so a resource created by a service account is owned by
+    it for authorization purposes.
+
+### `IssuancePolicy`
+
+A deny-by-default allowlist attached 1:1 to a service account, enforced on the
+issuance path. See the [Issuance Policies guide](../guides/issuance-policies.md).
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | `int` | Primary key | Auto-increment ID |
+| `service_account_id` | `int` | FK → `service_accounts.id`, unique | Owning account (1:1) |
+| `cn_patterns` | `list[str]` | JSON | Glob patterns the requested CN must match |
+| `san_dns_patterns` | `list[str]` | JSON | Glob patterns each DNS SAN must match |
+| `san_ip_cidrs` | `list[str]` | JSON | CIDRs each IP SAN must fall within |
+| `san_email_domains` | `list[str]` | JSON | Allowed domains for email SANs |
+| `allowed_ca_ids` | `list[int]` | JSON | Issuing CA ids the account may use |
+| `allowed_certificate_types` | `list[str]` | JSON | `server` / `client` |
+| `max_validity_days` | `int` | — | Caps requested (and default) validity |
+| `created_at` / `updated_at` | `datetime` | — | Timestamps (UTC) |
+
+An empty list denies that dimension entirely (deny-by-default).

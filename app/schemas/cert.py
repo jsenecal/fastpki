@@ -50,6 +50,9 @@ class CertificateResponse(BaseModel):
     issuer_id: int
     organization_id: int | None = None
     created_by_user_id: int | None = None
+    created_by_service_account_id: int | None = None
+    renewed_from_id: int | None = None
+    renewed_to_ids: list[int] = []
 
 
 class CertificateDetailResponse(CertificateResponse):
@@ -58,3 +61,7 @@ class CertificateDetailResponse(CertificateResponse):
 
 class CertificateRevoke(BaseModel):
     reason: str | None = None
+
+
+class CertificateRenewRequest(BaseModel):
+    csr: str | None = None

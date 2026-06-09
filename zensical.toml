@@ -16,10 +16,13 @@ nav = [
   { "User Guide" = [
     { "Certificate Authorities" = "guides/certificate-authorities.md" },
     { "Certificates" = "guides/certificates.md" },
+    { "Renewing Certificates" = "guides/renewing-certificates.md" },
     { "CRL & Public PKI" = "guides/crl.md" },
     { "Exporting" = "guides/exporting.md" },
     { "Organizations" = "guides/organizations.md" },
     { "Users" = "guides/users.md" },
+    { "Service Accounts" = "guides/service-accounts.md" },
+    { "Issuance Policies" = "guides/issuance-policies.md" },
     { "Audit Logs" = "guides/audit-logs.md" },
     { "CLI Tool" = "guides/cli.md" },
   ] },

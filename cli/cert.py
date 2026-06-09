@@ -193,6 +193,27 @@ def revoke(
     display_detail(data, CERT_DETAIL_FIELDS, title=f"Certificate #{cert_id} Revoked")
 
 
+@app.command()
+def renew(
+    cert_id: int = typer.Argument(..., help="Certificate ID to renew"),
+    csr_file: typer.FileText | None = typer.Option(
+        None, "--csr", help="PEM CSR file (required for CSR-origin certificates)"
+    ),
+) -> None:
+    """Renew a certificate, inheriting subject/SANs/CA/type from the original.
+
+    Omit --csr for server-key certificates (a fresh key is minted and returned).
+    """
+    payload: dict[str, object] = {}
+    if csr_file is not None:
+        payload["csr"] = csr_file.read()
+    data = client.post(f"/api/v1/certificates/{cert_id}/renew", json=payload).json()
+    fields = [*CERT_DETAIL_FIELDS, ("Renewed From", "renewed_from_id")]
+    if data.get("private_key"):
+        fields.append(("Private Key", "private_key"))
+    display_detail(data, fields, title=f"Certificate renewed from #{cert_id}")
+
+
 @app.command("private-key")
 def private_key(cert_id: int = typer.Argument(..., help="Certificate ID")) -> None:
     """Show certificate with private key."""

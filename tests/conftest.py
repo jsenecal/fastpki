@@ -17,12 +17,14 @@ from app.api.deps import (
     get_current_active_admin_user,
     get_current_active_superuser,
     get_current_active_user,
+    get_current_principal,
     get_current_user,
 )
 from app.core.config import logger, settings
 from app.db.models import User, UserRole
 from app.db.session import get_session
 from app.services.organization import OrganizationService
+from app.services.principal import Principal
 from app.services.user import UserService
 
 # Set logger to DEBUG for tests
@@ -245,6 +247,16 @@ class TestAuth:
         return self.user
 
 
+class TestPrincipalAuth:
+    """Override for get_current_principal — wraps a User as a Principal."""
+
+    def __init__(self, user: User | None = None):
+        self.user = user
+
+    async def __call__(self) -> Principal | None:
+        return Principal.from_user(self.user) if self.user is not None else None
+
+
 @pytest_asyncio.fixture
 def auth_override_app():
     """Return a function that creates an app with auth override."""
@@ -256,6 +268,7 @@ def auth_override_app():
         app.dependency_overrides[get_session] = get_test_session
         app.dependency_overrides[get_current_user] = TestAuth(user)
         app.dependency_overrides[get_current_active_user] = TestAuth(user)
+        app.dependency_overrides[get_current_principal] = TestPrincipalAuth(user)
 
         return app
 
@@ -270,6 +283,7 @@ def _make_client_app(user: User) -> FastAPI:
     app.dependency_overrides[get_current_active_user] = TestAuth(user)
     app.dependency_overrides[get_current_active_superuser] = TestAuth(user)
     app.dependency_overrides[get_current_active_admin_user] = TestAuth(user)
+    app.dependency_overrides[get_current_principal] = TestPrincipalAuth(user)
     return app
 
 

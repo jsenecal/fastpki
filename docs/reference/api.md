@@ -395,7 +395,8 @@ Get a certificate by ID.
 
 - **Auth required:** Read access to the certificate
 
-**Response** `200`: Certificate object (without private key). **Errors:** `403`, `404`.
+**Response** `200`: Certificate object (without private key), including lineage
+fields `renewed_from_id` and `renewed_to_ids`. **Errors:** `403`, `404`.
 
 ### `GET /certificates/{cert_id}/private-key`
 
@@ -419,6 +420,28 @@ Revoke a certificate.
 | `reason` | `string` | No | Revocation reason |
 
 **Response** `200`: Updated certificate object (status `revoked`). **Errors:** `403`, `404`, `409` (already revoked).
+
+### `POST /certificates/{cert_id}/renew`
+
+Issue a new certificate based on an existing one, inheriting subject, SANs, CA,
+type, and validity duration. See the
+[renewal guide](../guides/renewing-certificates.md).
+
+- **Auth required:** `create_cert` capability, Admin (same org), or Superuser
+- **Content-Type:** `application/json`
+- **Audit-logged**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `csr` | `string` | For CSR-origin certs | PEM CSR; its subject is ignored |
+
+Send an empty body (`{}`) for server-key certificates; the response includes a
+freshly minted private key. For service-account callers, the current issuance
+policy is re-evaluated against the inherited parameters.
+
+**Response** `201`: New certificate (with `renewed_from_id` set). **Errors:**
+`400` (`csr_required_for_csr_origin_cert` / `csr_not_allowed_for_server_key_cert`
+/ `policy_violation`), `403` (`service_account_has_no_policy`), `404`.
 
 ---
 
@@ -481,6 +504,87 @@ Query audit logs.
 | `limit` | `int` | `100` | Max results (1–1000) |
 
 **Response** `200`: Array of audit log objects. **Errors:** `403`.
+
+---
+
+## Service Accounts
+
+Non-human principals that hold API tokens. See the
+[Service Accounts guide](../guides/service-accounts.md). All endpoints are
+org-scoped; out-of-org accounts return `404`. Management requires an admin user
+session — a service-account token cannot call these endpoints.
+
+### `POST /api/v1/service-accounts/`
+
+Create a service account in the caller's organization.
+
+- **Auth required:** Admin (or superuser)
+- **Body:** `name` (required, unique in org), `description`, capability flags
+  (`can_create_ca`, `can_create_cert`, `can_revoke_cert`,
+  `can_export_private_key`, `can_delete_ca`), and `organization_id` (superusers
+  only).
+- **Response** `201`: service account object. **Errors:** `400` (duplicate name).
+
+### `GET /api/v1/service-accounts/`
+
+List service accounts in the caller's organization. **Response** `200`.
+
+### `GET /api/v1/service-accounts/{id}`
+
+Read one service account. **Response** `200`. **Errors:** `404`.
+
+### `PATCH /api/v1/service-accounts/{id}`
+
+Update name / description / capability flags, or `disabled` (`true`/`false`) to
+disable/enable. **Auth:** admin. **Response** `200`. **Errors:** `400`, `404`.
+
+### `DELETE /api/v1/service-accounts/{id}`
+
+Delete the account and cascade-revoke its tokens. **Auth:** admin.
+**Response** `204`. **Errors:** `404`.
+
+### `POST /api/v1/service-accounts/{id}/tokens`
+
+Mint a token. **Auth:** admin. **Body:** `name`, `expires_at` (optional).
+**Response** `201`: token metadata **plus** a one-time `token` field of the form
+`fpki_sa_<public_id>.<secret>` — never returned again. **Errors:** `404`.
+
+### `GET /api/v1/service-accounts/{id}/tokens`
+
+List token metadata (no plaintext, no digest). **Response** `200`. **Errors:** `404`.
+
+### `DELETE /api/v1/service-accounts/{id}/tokens/{token_id}`
+
+Revoke a token. **Auth:** admin. **Response** `204`. **Errors:** `404`.
+
+### `PUT /api/v1/service-accounts/{id}/policy`
+
+Create or replace the [issuance policy](../guides/issuance-policies.md).
+**Auth:** admin. **Body:** `cn_patterns`, `san_dns_patterns`, `san_ip_cidrs`,
+`san_email_domains`, `allowed_ca_ids`, `allowed_certificate_types`,
+`max_validity_days`. **Response** `200`. **Errors:** `404`.
+
+### `GET /api/v1/service-accounts/{id}/policy`
+
+Read the policy. **Response** `200`. **Errors:** `404` (no policy / out of org).
+
+### `DELETE /api/v1/service-accounts/{id}/policy`
+
+Delete the policy (reverts the account to deny-all). **Auth:** admin.
+**Response** `204`. **Errors:** `404`.
+
+### Issuance error codes (service accounts)
+
+When the caller is a service account, `POST /api/v1/certificates/` and
+`POST /api/v1/certificates/sign-csr` enforce the account's policy. Errors carry
+a structured `detail`:
+
+| Status | `detail.code` | When |
+|--------|---------------|------|
+| `403` | `service_account_has_no_policy` | The account has no policy attached |
+| `400` | `policy_violation` | A constraint failed; `detail.field` and `detail.value` name it |
+
+User-bound tokens are not subject to policy and never produce these errors.
 
 ---
 

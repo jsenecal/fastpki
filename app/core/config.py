@@ -63,6 +63,10 @@ class Settings(BaseSettings):
             raise ValueError("SECRET_KEY must be at least 32 characters long")  # noqa: TRY003
         return v
 
+    # Service-account API token pepper (NetBox-v2-style token hashing).
+    # If unset, falls back to SECRET_KEY (dev-only degradation).
+    SERVICE_ACCOUNT_TOKEN_PEPPER: str | None = None
+
     # Private key encryption
     PRIVATE_KEY_ENCRYPTION_KEY: str | None = None
 
