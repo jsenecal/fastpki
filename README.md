@@ -111,8 +111,8 @@ Run linting and type checking:
 make lint
 
 # Or directly
-ruff check app tests
-mypy app
+uv run ruff check app cli tests
+uv run mypy app cli
 ```
 
 Format code:
@@ -122,7 +122,7 @@ Format code:
 make format
 
 # Or directly
-ruff format app tests
+uv run ruff format app cli tests
 ```
 
 ### Pre-commit Hooks
