@@ -1,0 +1,12 @@
+# Codecov configuration — https://docs.codecov.com/docs/codecovyml-reference
+coverage:
+  status:
+    # Project coverage must not regress (small fluctuations tolerated).
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    # New / changed lines (the PR diff) must be at least 95% covered.
+    patch:
+      default:
+        target: 95%
