@@ -1,17 +1,14 @@
 #!/bin/bash
 set -e
 
-# Create directory if it doesn't exist
-mkdir -p scripts
-
 # Run formatting and linting
 echo "Running ruff format..."
-ruff format app tests
+ruff format app cli tests
 
 echo "Running ruff check..."
-ruff check app tests
+ruff check app cli tests
 
 echo "Running mypy..."
-mypy app
+mypy app cli
 
 echo "All linting checks passed!"

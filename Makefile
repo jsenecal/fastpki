@@ -1,29 +1,29 @@
 .PHONY: install format lint test run clean docker-build docker-up docker-down docs docs-serve bump-patch bump-minor bump-major
 
-# Install dependencies
+# Install dependencies (server + tooling) into a uv-managed virtualenv
 install:
-	uv pip install -e ".[dev]"
+	uv sync
 
 # Format code
 format:
-	ruff format app tests
+	uv run ruff format app cli tests
 
 # Run linting
 lint:
-	ruff check app tests
-	mypy app
+	uv run ruff check app cli tests
+	uv run mypy app cli
 
 # Run tests
 test:
-	pytest
+	uv run pytest
 
 # Run tests with coverage
 test-cov:
-	pytest --cov=app --cov-report=term-missing --cov-report=xml
+	uv run pytest --cov=app --cov-report=term-missing --cov-report=xml
 
 # Run the application
 run:
-	uvicorn app.main:app --reload
+	uv run uvicorn app.main:app --reload
 
 # Clean up compiled Python files
 clean:
@@ -52,12 +52,12 @@ docker-up:
 docker-down:
 	docker-compose -f docker/docker-compose.yml down
 
-# Documentation
+# Documentation (built with Zensical)
 docs:
-	mkdocs build --strict
+	uv run zensical build
 
 docs-serve:
-	mkdocs serve
+	uv run zensical serve
 
 # Version bumping
 bump-patch:
