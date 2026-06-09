@@ -1,160 +1,122 @@
-# FastPKI - Claude Guide
+# CLAUDE.md
 
-This file contains important information for Claude when working with this codebase.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-FastPKI is an API-based PKI management system that provides an easier alternative to Easy-RSA. It allows you to create and manage Certificate Authorities, issue certificates, and revoke them through a RESTful API.
+FastPKI is an API-based PKI management system that provides an easier alternative to Easy-RSA. It manages Certificate Authorities (including intermediate CA hierarchies), issues server/client/CA certificates, and revokes them with CRL distribution — all through a RESTful API, with a companion CLI client.
 
-## Directory Structure
+## Repository Layout & Packaging (important)
 
-- `/app`: Main application code (web API)
-  - `/api`: API endpoints
-  - `/core`: Core configuration
-  - `/db`: Database models and session management
-  - `/schemas`: Pydantic schemas for API requests/responses
-  - `/services`: Business logic services
-- `/cli`: CLI tool (`pip install fastpki[cli]`)
-- `/tests`: Test suite
-- `/docs`: Documentation (built with Zensical)
-- `/docker`: Docker configuration
-- `/data`: SQLite database files and other persistent data
+This repo holds two deliverables with different distribution models:
+
+- **`cli/`** — the **published PyPI package** (`pip install fastpki`). It is a thin Typer + httpx client; its only runtime deps are `typer`, `rich`, `httpx` (see `[project]` in `pyproject.toml`). `packages = ["cli"]` means *only* `cli/` ships in the wheel.
+- **`app/`** — the **FastAPI server**. It is **not** packaged in the wheel; it runs from source (`uvicorn app.main:app`) or the Docker image. Its dependencies live in the `server` PEP 735 dependency-group, not in `[project.dependencies]`.
+
+Consequence: there are no `[project.optional-dependencies]` extras. Use dependency-groups (`uv sync` installs the default `dev` group), **not** `pip install fastpki[dev]`.
+
+### Directory structure
+
+- `/app` — FastAPI server
+  - `/api` — endpoint routers (`auth`, `ca`, `certs`, `pki`, `export`, `audit`, `organizations`, `users`); `deps.py` holds auth dependencies
+  - `/core` — `config.py` (pydantic-settings `Settings`)
+  - `/db` — `models.py` (SQLModel tables) and `session.py` (async engine/session)
+  - `/schemas` — Pydantic request/response models
+  - `/services` — business logic (CA, cert, user, organization, permission, token, encryption, audit)
+- `/cli` — Typer CLI; one module per command group, `client.py` wraps API calls, `config.py` stores server URL + token
+- `/alembic` — database migrations
+- `/tests` — `test_api/` (endpoint-level) and `test_services/` (unit-level)
+- `/docs` — documentation built with **Zensical** (`zensical.toml`)
+- `/docker` — Dockerfile and compose files
+
+## High-Level Architecture
+
+**Layering: API → Service → DB.** Routers in `app/api/` are thin; they validate input via `app/schemas/`, resolve the caller via dependencies in `app/api/deps.py`, then delegate to a service in `app/services/`. Services own all business logic and DB access and raise typed errors from `app/services/exceptions.py`. Keep new logic in services, not routers.
+
+**App factory & lifespan (`app/main.py`).** `create_app()` builds the FastAPI app and is what `app = create_app()` (and tests) call. The lifespan handler: creates tables, runs `encrypt_existing_keys()` (migrates plaintext private keys to encrypted-at-rest), and starts a background `token_gc_loop` that purges expired blocklisted/refresh tokens hourly. Middleware adds security headers, rate limiting (slowapi), and optional CORS.
+
+**Two router mount points.** The API router mounts under `settings.API_V1_STR` (`/api/v1`). The PKI distribution routers (`ca_router`, `crl_router`) mount at **`/ca`** and **`/crl`** — these are public endpoints for serving CA certs and CRLs, intentionally outside the authenticated API prefix.
+
+**AuthN/AuthZ.**
+- JWT access (15 min) + refresh (24 h) tokens, `HS256`, validated in `deps.py::_validate_token`.
+- Token revocation works two ways: a JTI blocklist (`TokenService.is_token_blocklisted`) and a per-user `tokens_invalidated_at` cutoff that invalidates all tokens issued before it.
+- Authorization is centralized in `app/services/permission.py`. The hierarchy: superuser → resource creator → org admin → org read → per-user capability flags (`can_create_ca`, `can_create_cert`, `can_revoke_cert`, `can_export_private_key`, `can_delete_ca`). Roles: `SUPERUSER`, `ADMIN`, `USER`. **All reads/writes must be scoped to the caller's organization** (see commit `a975df5`).
+
+**Encryption at rest.** Private keys are encrypted with a Fernet key from `PRIVATE_KEY_ENCRYPTION_KEY` via `app/services/encryption.py`. If unset, keys are stored plaintext (dev only).
+
+**Config (`app/core/config.py`).** Settings load from env / `.env`. Notable vars: `DATABASE_URL`, `SECRET_KEY` (must be ≥32 chars and not the default in prod), `PRIVATE_KEY_ENCRYPTION_KEY`, `ENABLE_DOCS` (default `False` — `/docs`, `/redoc`, `openapi.json` are off unless enabled), `BACKEND_CORS_ORIGINS`, `AUTH_RATE_LIMIT`, `ALLOW_UNAUTHENTICATED_REGISTRATION`.
 
 ## Development Workflow
 
-### Essential Commands
-
-Always run these commands before confirming code changes:
+Work happens in a uv-managed virtualenv. Tests/lint will fail outside it (missing deps).
 
 ```bash
-# Format code
-ruff format app tests
+# Install dev dependencies (server + tooling). Uses dependency-groups, NOT extras.
+uv sync
 
-# Check code quality and types
-ruff check app tests
-mypy app
+# Format
+ruff format app cli tests
 
-# Run tests
+# Lint + type-check (include cli — see note below)
+ruff check app cli tests
+mypy app cli
+
+# Run the server
+uvicorn app.main:app --reload
+
+# Run the full test suite (coverage is configured in pyproject addopts)
 pytest
+
+# Run a single test file / test
+pytest tests/test_api/test_ca.py -v
+pytest tests/test_api/test_ca.py::TestCreateCA::test_create_ca -v
 ```
 
-### Using Make
+The `Makefile` wraps these in `uv run` (`make install|format|lint|test|test-cov|run|docs|docs-serve`), so the targets work without manually activating the venv; `make docs` builds with `zensical`.
 
-You can use the Makefile for common operations:
+## Database Migrations (Alembic)
 
-```bash
-# Format code
-make format
-
-# Lint and type check code
-make lint
-
-# Run tests
-make test
-
-# Run tests with coverage
-make test-cov
-```
-
-## Docker Workflow
-
-For development with Docker:
+Models are SQLModel tables in `app/db/models.py`. The server auto-creates tables on startup, but schema changes ship as Alembic migrations.
 
 ```bash
-# Development mode with SQLite and code reloading
-docker-compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d
+# Generate a migration after changing models
+alembic revision --autogenerate -m "describe change"
 
-# Production mode with PostgreSQL
-docker-compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml up -d
+# Apply / roll back
+alembic upgrade head
+alembic downgrade -1
 ```
 
 ## Type Checking Guidelines
 
-- All function definitions should have proper type annotations
-- Use `X | None` syntax instead of `Optional[X]` (Python 3.10+)
-- All class attributes should be properly typed
-- Use SQLModel typing conventions for database models
-
-## Dependencies
-
-- FastAPI for the web framework
-- SQLModel for the ORM (built on SQLAlchemy)
-- Cryptography for PKI operations
-- Pydantic for data validation
-- UV for package management
-- Ruff for linting and formatting
-- Mypy for type checking
-
-## Database Configuration
-
-The application supports both SQLite and PostgreSQL:
-- Default: SQLite (`sqlite+aiosqlite:///./data/fastpki.db`)
-- PostgreSQL: Configure via environment variable (`DATABASE_URL=postgresql+asyncpg://user:pass@host:port/db`)
+- Annotate every function; mypy runs in strict-ish mode (`disallow_untyped_defs`, `disallow_any_generics`, etc.).
+- Use `X | None`, not `Optional[X]`.
+- Follow SQLModel typing conventions for models.
 
 ## Testing
 
-- We follow Test-Driven Development (TDD) practices
-- Always create a failing test first, then implement the feature to make it pass
-- Follow the Red-Green-Refactor cycle:
-  1. Red: Write a failing test for the new functionality
-  2. Green: Implement the minimal code needed to make the test pass
-  3. Refactor: Clean up the code while ensuring tests still pass
-- Use pytest for all tests
-- Test coverage should be maintained above 80%
-- Tests are in the `/tests` directory
-- Tests need to be run within the virtual environment or otherwise will fail due to missing dependencies
+- TDD: Red → Green → Refactor. Write the failing test first.
+- pytest with `asyncio_mode = "auto"`; coverage target >80% (currently ~90%).
+- `tests/conftest.py` provides shared fixtures (app, async client, DB session).
 
 ## Git Commits
 
-- Write concise, meaningful commit messages
-- Use the imperative mood ("Add feature" not "Added feature")
-- Follow the conventional commits format (fix:, feat:, docs:, etc.)
-- NEVER mention Claude, AI, LLMs, or include any AI-related signatures in commit messages
-- Do not include any "Co-Authored-By" statements
+- Imperative mood, conventional commits (`fix:`, `feat:`, `docs:`, …).
+- **Never** mention Claude/AI or add `Co-Authored-By` / attribution lines.
 
-### PR Titles and Release Notes
+### PR Titles & Release Notes
 
-PR titles should follow conventional commits — they drive automated labeling and release notes via Release Drafter (`.github/release-drafter.yml`, `.github/workflows/release-drafter.yml`).
+PR titles drive autolabeling and release notes via Release Drafter (`.github/release-drafter.yml`).
 
-- Title prefix → autolabel → CHANGELOG section:
-  - `feat:` → `feature` → **Added**
-  - `fix:` → `fix` → **Fixed**
-  - `security:` → `security` → **Security**
-  - `docs:` → `documentation` → **Documentation**
-  - `refactor:` / `perf:` → `refactor` / `performance` → **Changed**
-  - `chore:` / `chore(deps):` / `ci:` / `build:` / `test:` → **Maintenance**
-  - `feat!:` / `fix!:` / `BREAKING CHANGE:` in body → `breaking` → forces major bump
-- Override the semver bump by adding a `major`, `minor`, or `patch` label to the PR.
-- Apply `skip-changelog` to exclude a PR from the drafted release notes (e.g. internal-only changes).
-- The draft release is updated on every push to `master`; publishing it triggers the `release` event in `ci.yml`, which builds the Docker image and publishes to PyPI.
-
-### Test Workflow
-
-```bash
-# Create a new failing test
-# Example: Create a test for a new feature
-pytest tests/test_new_feature.py -v
-
-# Implement the feature to make the test pass
-pytest tests/test_new_feature.py -v
-
-# Refactor as needed while keeping tests passing
-pytest -v
-```
+- Prefix → label → CHANGELOG section: `feat:`→`feature`→**Added**; `fix:`→`fix`→**Fixed**; `security:`→`security`→**Security**; `docs:`→**Documentation**; `refactor:`/`perf:`→**Changed**; `chore:`/`ci:`/`build:`/`test:`→**Maintenance**.
+- `feat!:`/`fix!:` or `BREAKING CHANGE:` in body → `breaking` → major bump. Override the bump with a `major`/`minor`/`patch` label; exclude a PR with `skip-changelog`.
+- Publishing the drafted GitHub release triggers the `release` event in `ci.yml`, which builds the Docker image and publishes to PyPI.
 
 ## Release Checklist
 
-Before tagging a release, verify the following:
-
-- [ ] All tests pass (`pytest`)
-- [ ] Linting and type checks pass (`ruff check app cli tests && mypy app cli`)
-- [ ] **CLI conforms to the API** — every API endpoint in `app/api/` has a corresponding CLI command in `cli/`. If an endpoint was added, modified, or removed, update the CLI to match.
-- [ ] **Documentation is up-to-date** — any new or changed features, endpoints, configuration options, or CLI commands are reflected in `docs/`. Key files to check:
-  - `docs/reference/api.md` — API endpoint reference
-  - `docs/reference/configuration.md` — environment variables
-  - `docs/reference/models.md` — data model fields
-  - `docs/guides/` — user-facing guides for new features
-  - `docs/security/authentication.md` — auth-related changes
-  - `zensical.toml` — navigation updated if new pages were added
-- [ ] Documentation builds successfully (`zensical build`)
-- [ ] Version bumped (`bumpver update --patch|--minor|--major`) — updates `version` in `pyproject.toml` and the `current_version` in `[tool.bumpver]`, commits and tags
+- [ ] `pytest` passes
+- [ ] `ruff check app cli tests && mypy app cli` passes
+- [ ] **CLI conforms to the API** — every endpoint in `app/api/` has a matching CLI command in `cli/`. Adding/changing/removing an endpoint means updating the CLI.
+- [ ] **Docs updated** — reflect new/changed features in `docs/` (esp. `reference/api.md`, `reference/configuration.md`, `reference/models.md`, `guides/`, `security/authentication.md`) and `zensical.toml` nav.
+- [ ] Docs build: `zensical build`
+- [ ] Version bumped: `make bump-patch|bump-minor|bump-major` (wraps `bump-my-version bump`). The version lives only in `[project].version` (PEP 621) — bump-my-version reads and updates it directly, then commits and tags `vX.Y.Z`. Requires a clean working tree; preview with `bump-my-version bump --dry-run --verbose <part>`.
