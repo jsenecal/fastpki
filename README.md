@@ -82,12 +82,8 @@ The API will be available at http://localhost:8000
 git clone https://github.com/jsenecal/fastpki.git
 cd fastpki
 
-# Create a virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies with uv (faster)
-uv pip install -e ".[dev]"
+# Install dependencies (creates the uv-managed virtualenv and installs the dev group)
+uv sync
 
 # Create a .env file from the example
 cp .env.example .env
