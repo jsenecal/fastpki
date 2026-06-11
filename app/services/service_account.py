@@ -92,14 +92,13 @@ class ServiceAccountService:
         return result.scalar_one_or_none()
 
     async def list_service_accounts(
-        self, *, organization_id: int
+        self, *, organization_id: int | None = None
     ) -> list[ServiceAccount]:
-        """List service accounts in an organization."""
-        result = await self.db.execute(
-            select(ServiceAccount)
-            .where(ServiceAccount.organization_id == organization_id)
-            .order_by(ServiceAccount.name)
-        )
+        """List service accounts, optionally scoped to an organization."""
+        query = select(ServiceAccount).order_by(ServiceAccount.name)
+        if organization_id is not None:
+            query = query.where(ServiceAccount.organization_id == organization_id)
+        result = await self.db.execute(query)
         return list(result.scalars().all())
 
     async def set_disabled(self, sa_id: int, *, disabled: bool) -> ServiceAccount:

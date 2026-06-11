@@ -527,7 +527,7 @@ Create a service account in the caller's organization.
 
 ### `GET /api/v1/service-accounts/`
 
-List service accounts in the caller's organization. **Response** `200`.
+List service accounts in the caller's organization. Superusers see all service accounts. **Response** `200`.
 
 ### `GET /api/v1/service-accounts/{id}`
 
