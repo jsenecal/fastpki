@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_principal
 from app.db.models import AuditAction, PermissionAction, UserRole
 from app.db.session import get_session
-from app.schemas.ca import CACreate, CADetailResponse, CAResponse
+from app.schemas.ca import CAAssignOrganization, CACreate, CADetailResponse, CAResponse
 from app.services.audit import AuditService
 from app.services.ca import CAService
 from app.services.encryption import EncryptionService
@@ -13,6 +13,7 @@ from app.services.exceptions import (
     NotFoundError,
     PermissionDeniedError,
 )
+from app.services.organization import OrganizationService
 from app.services.permission import PermissionService
 from app.services.principal import Principal
 
@@ -168,6 +169,53 @@ async def read_ca_children(
     ca_service = CAService(db)
     children = await ca_service.get_child_cas(ca_id)
     return children
+
+
+@router.patch("/{ca_id}", response_model=CAResponse)
+async def assign_ca_organization(
+    ca_id: int,
+    assign_in: CAAssignOrganization,
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+    principal: Principal = Depends(get_current_principal),  # noqa: B008
+) -> CAResponse:
+    """Assign a Certificate Authority to an organization (superuser only).
+
+    With cascade=true, all descendant CAs and the certificates issued by the
+    affected CAs are adopted into the organization as well.
+    """
+    if principal.role != UserRole.SUPERUSER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    org = await OrganizationService(db).get_organization_by_id(
+        assign_in.organization_id
+    )
+    if not org:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Organization with ID {assign_in.organization_id} not found",
+        )
+    ca_service = CAService(db)
+    try:
+        ca, cas_updated, certs_updated = await ca_service.assign_organization(
+            ca_id, assign_in.organization_id, cascade=assign_in.cascade
+        )
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    audit_service = AuditService(db)
+    await audit_service.log_action(
+        action=AuditAction.CA_UPDATE,
+        organization_id=assign_in.organization_id,
+        resource_type="ca",
+        resource_id=ca_id,
+        detail=(
+            f"Assigned CA '{ca.name}' to organization '{org.name}' "
+            f"({cas_updated} CA(s), {certs_updated} certificate(s) updated)"
+        ),
+        **AuditService.actor_fields(principal),
+    )
+    return ca
 
 
 @router.delete("/{ca_id}", status_code=status.HTTP_204_NO_CONTENT)

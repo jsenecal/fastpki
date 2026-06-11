@@ -90,6 +90,42 @@ curl -s -X DELETE http://localhost:8000/api/v1/organizations/1/users/2 \
 
 **Required role:** Superuser (any org), or Admin in the target organization.
 
+## Adopting Pre-Organization Resources
+
+Instances that predate organizations (or resources created by a superuser with
+no organization) have CAs and certificates with `organization_id: null`. Such
+resources are accessible to superusers only, so organization-scoped users and
+[service accounts](service-accounts.md) cannot use them — for example, a
+service account with an issuance policy cannot mint certificates under an
+org-less CA.
+
+To adopt an existing CA into an organization, assign it with
+`PATCH /cas/{ca_id}`:
+
+```bash
+curl -s -X PATCH http://localhost:8000/api/v1/cas/2 \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "organization_id": 1,
+    "cascade": true
+  }' | python -m json.tool
+```
+
+Or with the CLI:
+
+```bash
+fastpki ca assign-org 2 --org 1 --cascade
+```
+
+With `"cascade": true`, all descendant CAs and the certificates issued by the
+affected CAs are adopted into the organization as well — use this to migrate
+an entire pre-organization hierarchy in one call. Without it, only the
+specified CA is reassigned; previously issued certificates keep their current
+organization (and org-less ones remain superuser-only).
+
+**Required role:** Superuser only. Audit-logged.
+
 ## List Users in an Organization
 
 ```bash

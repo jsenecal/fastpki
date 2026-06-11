@@ -116,6 +116,26 @@ def create(
     display_detail(data, fields, title="CA Created")
 
 
+@app.command("assign-org")
+def assign_org(
+    ca_id: int = typer.Argument(..., help="CA ID"),
+    organization_id: int = typer.Option(
+        ..., "--org", "-o", help="Organization ID to assign the CA to"
+    ),
+    cascade: bool = typer.Option(
+        False,
+        "--cascade",
+        help="Also adopt descendant CAs and their issued certificates",
+    ),
+) -> None:
+    """Assign a CA to an organization (superuser only)."""
+    payload: dict[str, object] = {"organization_id": organization_id}
+    if cascade:
+        payload["cascade"] = True
+    data = client.patch(f"/api/v1/cas/{ca_id}", json=payload).json()
+    display_detail(data, CA_DETAIL_FIELDS, title=f"CA #{ca_id}")
+
+
 @app.command()
 def delete(
     ca_id: int = typer.Argument(..., help="CA ID"),
