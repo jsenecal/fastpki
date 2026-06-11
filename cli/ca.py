@@ -125,7 +125,7 @@ def assign_org(
     cascade: bool = typer.Option(
         False,
         "--cascade",
-        help="Also adopt descendant CAs and their issued certificates",
+        help="Also adopt org-less descendant CAs and their issued certificates",
     ),
 ) -> None:
     """Assign a CA to an organization (superuser only)."""

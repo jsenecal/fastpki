@@ -337,7 +337,7 @@ organization-scoped users and service accounts can use them.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `organization_id` | integer | Yes | Organization to assign the CA to |
-| `cascade` | boolean | No | Also adopt all descendant CAs and the certificates issued by the affected CAs (default `false`) |
+| `cascade` | boolean | No | Also adopt descendant CAs and issued certificates that are org-less (default `false`). Resources owned by a different organization are left untouched, and traversal stops at such CAs |
 
 **Response** `200`: Updated CA object. **Errors:** `400` (unknown organization), `403`, `404`.
 

@@ -198,11 +198,16 @@ async def assign_ca_organization(
         )
     ca_service = CAService(db)
     try:
-        ca, cas_updated, certs_updated = await ca_service.assign_organization(
+        assignment = await ca_service.assign_organization(
             ca_id, assign_in.organization_id, cascade=assign_in.cascade
         )
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    previous = (
+        "unassigned"
+        if assignment.previous_organization_id is None
+        else f"organization {assignment.previous_organization_id}"
+    )
     audit_service = AuditService(db)
     await audit_service.log_action(
         action=AuditAction.CA_UPDATE,
@@ -210,12 +215,13 @@ async def assign_ca_organization(
         resource_type="ca",
         resource_id=ca_id,
         detail=(
-            f"Assigned CA '{ca.name}' to organization '{org.name}' "
-            f"({cas_updated} CA(s), {certs_updated} certificate(s) updated)"
+            f"Assigned CA '{assignment.ca.name}' to organization '{org.name}' "
+            f"(previously {previous}; {assignment.cas_updated} CA(s), "
+            f"{assignment.certs_updated} certificate(s) updated)"
         ),
         **AuditService.actor_fields(principal),
     )
-    return ca
+    return assignment.ca
 
 
 @router.delete("/{ca_id}", status_code=status.HTTP_204_NO_CONTENT)

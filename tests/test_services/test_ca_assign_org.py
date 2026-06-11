@@ -47,13 +47,12 @@ class TestAssignOrganizationService:
         ca = await _create_orgless_ca(db, "Svc Legacy Root")
         ca_service = CAService(db)
 
-        updated, cas_updated, certs_updated = await ca_service.assign_organization(
-            ca.id, test_org.id
-        )
+        result = await ca_service.assign_organization(ca.id, test_org.id)
 
-        assert updated.organization_id == test_org.id
-        assert cas_updated == 1
-        assert certs_updated == 0
+        assert result.ca.organization_id == test_org.id
+        assert result.cas_updated == 1
+        assert result.certs_updated == 0
+        assert result.previous_organization_id is None
 
     async def test_cascade_counts_subtree_cas_and_certs(self, db, test_org):
         root = await _create_orgless_ca(db, "Svc Root")
@@ -70,16 +69,94 @@ class TestAssignOrganizationService:
         )
 
         ca_service = CAService(db)
-        _, cas_updated, certs_updated = await ca_service.assign_organization(
+        result = await ca_service.assign_organization(
             root.id, test_org.id, cascade=True
         )
 
-        assert cas_updated == 2
-        assert certs_updated == 1
+        assert result.cas_updated == 2
+        assert result.certs_updated == 1
 
     async def test_missing_ca_raises_not_found(self, db, test_org):
         with pytest.raises(NotFoundError):
             await CAService(db).assign_organization(99999, test_org.id)
+
+    async def test_reassignment_reports_previous_organization(self, db, test_org):
+        from app.services.organization import OrganizationService
+
+        other_org = await OrganizationService(db).create_organization(
+            name="SvcPreviousOrg", description="previous owner"
+        )
+        ca = await _create_orgless_ca(db, "Svc Moved Root")
+        ca_service = CAService(db)
+        await ca_service.assign_organization(ca.id, other_org.id)
+
+        result = await ca_service.assign_organization(ca.id, test_org.id)
+
+        assert result.previous_organization_id == other_org.id
+        assert result.ca.organization_id == test_org.id
+
+    async def test_cascade_skips_descendants_owned_by_another_org(self, db, test_org):
+        """Cascade adopts orphan descendants only; a branch already owned by a
+        different organization is left intact and not traversed."""
+        from app.services.organization import OrganizationService
+
+        other_org = await OrganizationService(db).create_organization(
+            name="SvcForeignOrg", description="other tenant"
+        )
+        root = await _create_orgless_ca(db, "Svc Mixed Root")
+        orphan_child = await _create_orgless_ca(
+            db, "Svc Orphan Child", parent_ca_id=root.id
+        )
+        foreign_child = await CAService(db).create_ca(
+            name="Svc Foreign Child",
+            subject_dn="CN=Svc Foreign Child",
+            key_size=2048,
+            valid_days=365,
+            organization_id=other_org.id,
+            parent_ca_id=root.id,
+        )
+        orphan_below_foreign = await _create_orgless_ca(
+            db, "Svc Orphan Below Foreign", parent_ca_id=foreign_child.id
+        )
+
+        result = await CAService(db).assign_organization(
+            root.id, test_org.id, cascade=True
+        )
+
+        await db.refresh(orphan_child)
+        await db.refresh(foreign_child)
+        await db.refresh(orphan_below_foreign)
+        assert orphan_child.organization_id == test_org.id
+        assert foreign_child.organization_id == other_org.id
+        # Traversal stops at the foreign-owned branch.
+        assert orphan_below_foreign.organization_id is None
+        assert result.cas_updated == 2  # root + orphan child
+
+    async def test_cascade_does_not_steal_certs_of_foreign_cas(self, db, test_org):
+        from app.services.organization import OrganizationService
+
+        other_org = await OrganizationService(db).create_organization(
+            name="SvcForeignCertOrg", description="other tenant"
+        )
+        root = await _create_orgless_ca(db, "Svc Cert Root")
+        cert_service = CertificateService(db)
+        foreign_cert = await cert_service.create_certificate(
+            ca_id=root.id,
+            common_name="foreign.example.com",
+            subject_dn="CN=foreign.example.com",
+            certificate_type=CertificateType.SERVER,
+            key_size=2048,
+            valid_days=30,
+            organization_id=other_org.id,
+        )
+
+        result = await CAService(db).assign_organization(
+            root.id, test_org.id, cascade=True
+        )
+
+        await db.refresh(foreign_cert)
+        assert foreign_cert.organization_id == other_org.id
+        assert result.certs_updated == 0
 
     async def test_org_service_account_can_issue_after_assignment(self, db, test_org):
         """The issue #51 scenario: an org-scoped SA blocked on an org-less CA

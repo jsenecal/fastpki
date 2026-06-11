@@ -1,5 +1,6 @@
 import re
 from datetime import datetime, timedelta
+from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
 from cryptography import x509
@@ -16,6 +17,15 @@ from app.services.encryption import EncryptionService
 from app.services.exceptions import HasDependentsError, NotFoundError
 
 UTC = ZoneInfo("UTC")
+
+
+class OrganizationAssignment(NamedTuple):
+    """Result of CAService.assign_organization."""
+
+    ca: CertificateAuthority
+    cas_updated: int
+    certs_updated: int
+    previous_organization_id: int | None
 
 
 class CAService:
@@ -304,43 +314,60 @@ class CAService:
 
     async def assign_organization(
         self, ca_id: int, organization_id: int, cascade: bool = False
-    ) -> tuple[CertificateAuthority, int, int]:
+    ) -> "OrganizationAssignment":
         """Assign a CA to an organization.
 
-        With cascade=True, also adopts all descendant CAs and every certificate
-        issued by the affected CAs (intended for migrating pre-organization
-        instances). Returns (ca, cas_updated, certs_updated).
+        With cascade=True, also adopts descendant CAs and issued certificates
+        that are org-less or already in the target organization (intended for
+        migrating pre-organization instances). A descendant owned by a
+        different organization is left untouched and its branch is not
+        traversed, so cascade can never move another tenant's resources.
         """
         ca = await self.db.get(CertificateAuthority, ca_id)
         if not ca:
             raise NotFoundError(f"Certificate Authority with ID {ca_id} not found")  # noqa: TRY003
+        previous_organization_id = ca.organization_id
 
-        ca_ids = [ca_id]
+        # The explicitly targeted CA is always reassigned; cascade only adopts
+        # descendants that are unowned or already in the target organization.
+        adopted_ids = {ca_id}
         if cascade:
             queue = [ca_id]
             while queue:
                 for child in await self.get_child_cas(queue.pop()):
-                    if child.id is not None:
-                        ca_ids.append(child.id)
+                    if (
+                        child.id is not None
+                        and child.id not in adopted_ids
+                        and child.organization_id in (None, organization_id)
+                    ):
+                        adopted_ids.add(child.id)
                         queue.append(child.id)
 
-        await self.db.execute(
+        ca_result = await self.db.execute(
             update(CertificateAuthority)
-            .where(col(CertificateAuthority.id).in_(ca_ids))
+            .where(col(CertificateAuthority.id).in_(adopted_ids))
             .values(organization_id=organization_id)
         )
         certs_updated = 0
         if cascade:
-            result = await self.db.execute(
+            cert_result = await self.db.execute(
                 update(Certificate)
-                .where(col(Certificate.issuer_id).in_(ca_ids))
+                .where(
+                    col(Certificate.issuer_id).in_(adopted_ids),
+                    col(Certificate.organization_id).is_(None),
+                )
                 .values(organization_id=organization_id)
             )
-            certs_updated = result.rowcount  # type: ignore[attr-defined]
+            certs_updated = cert_result.rowcount  # type: ignore[attr-defined]
 
         await self.db.commit()
         await self.db.refresh(ca)
-        return ca, len(ca_ids), certs_updated
+        return OrganizationAssignment(
+            ca=ca,
+            cas_updated=ca_result.rowcount,  # type: ignore[attr-defined]
+            certs_updated=certs_updated,
+            previous_organization_id=previous_organization_id,
+        )
 
     async def delete_ca(self, ca_id: int) -> bool:
         """Delete a Certificate Authority by ID.

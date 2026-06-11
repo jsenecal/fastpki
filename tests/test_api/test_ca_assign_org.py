@@ -133,6 +133,14 @@ class TestAssignOrganization:
         assert grandchild.organization_id == test_org.id
         assert cert.organization_id == test_org.id
 
+    async def test_unauthenticated_returns_401(self, client, db, test_org):
+        ca = await _create_orgless_ca(db, name="Unauthed Root")
+        response = await client.patch(
+            f"/api/v1/cas/{ca.id}",
+            json={"organization_id": test_org.id},
+        )
+        assert response.status_code == 401
+
     async def test_assignment_is_audit_logged(self, superuser_client, db, test_org):
         ca = await _create_orgless_ca(db, name="Audited Root")
         response = await superuser_client.patch(
@@ -149,3 +157,33 @@ class TestAssignOrganization:
         assert logs[0].resource_type == "ca"
         assert logs[0].resource_id == ca.id
         assert logs[0].organization_id == test_org.id
+        # The previous owner must be reconstructable from the audit trail.
+        assert "unassigned" in (logs[0].detail or "")
+
+    async def test_audit_detail_records_previous_organization(
+        self, superuser_client, db, test_org
+    ):
+        from app.services.organization import OrganizationService
+
+        other_org = await OrganizationService(db).create_organization(
+            name="ApiPreviousOrg", description="previous owner"
+        )
+        ca = await _create_orgless_ca(db, name="Moved Root")
+        first = await superuser_client.patch(
+            f"/api/v1/cas/{ca.id}",
+            json={"organization_id": other_org.id},
+        )
+        assert first.status_code == 200
+
+        second = await superuser_client.patch(
+            f"/api/v1/cas/{ca.id}",
+            json={"organization_id": test_org.id},
+        )
+        assert second.status_code == 200
+
+        result = await db.execute(
+            select(AuditLog).where(AuditLog.action == AuditAction.CA_UPDATE)
+        )
+        logs = list(result.scalars().all())
+        assert len(logs) == 2
+        assert f"organization {other_org.id}" in (logs[1].detail or "")

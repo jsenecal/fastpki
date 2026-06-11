@@ -118,11 +118,14 @@ Or with the CLI:
 fastpki ca assign-org 2 --org 1 --cascade
 ```
 
-With `"cascade": true`, all descendant CAs and the certificates issued by the
-affected CAs are adopted into the organization as well — use this to migrate
-an entire pre-organization hierarchy in one call. Without it, only the
-specified CA is reassigned; previously issued certificates keep their current
-organization (and org-less ones remain superuser-only).
+With `"cascade": true`, descendant CAs and issued certificates are adopted
+into the organization as well — use this to migrate an entire
+pre-organization hierarchy in one call. Cascade only adopts org-less
+resources (or ones already in the target organization): a descendant owned
+by a *different* organization is left untouched and its branch is not
+traversed, so cascade can never move another tenant's resources. Without
+cascade, only the specified CA is reassigned; previously issued certificates
+keep their current organization (and org-less ones remain superuser-only).
 
 **Required role:** Superuser only. Audit-logged.
 
