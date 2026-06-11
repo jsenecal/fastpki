@@ -103,15 +103,15 @@ async def list_service_accounts(
     db: AsyncSession = Depends(get_session),  # noqa: B008
     current_user: User = Depends(get_current_active_user),  # noqa: B008
 ) -> list[ServiceAccount]:
-    """List service accounts in the caller's organization."""
-    if current_user.organization_id is None and current_user.role != UserRole.SUPERUSER:
-        return []
+    """List service accounts in the caller's organization (all for superusers)."""
     service = ServiceAccountService(db)
-    # A superuser without an org sees nothing here; org-scoped listing only.
-    org_id = current_user.organization_id
-    if org_id is None:
+    if current_user.role == UserRole.SUPERUSER:
+        return await service.list_service_accounts()
+    if current_user.organization_id is None:
         return []
-    return await service.list_service_accounts(organization_id=org_id)
+    return await service.list_service_accounts(
+        organization_id=current_user.organization_id
+    )
 
 
 @router.get("/{sa_id}", response_model=ServiceAccountResponse)

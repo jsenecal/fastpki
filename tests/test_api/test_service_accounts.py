@@ -64,6 +64,20 @@ async def test_list_service_accounts_scoped(admin_sa_client):
 
 
 @pytest.mark.asyncio
+async def test_superuser_lists_all_service_accounts(superuser_client, db, test_org):
+    """An org-less superuser must see every service account, not [] (issue #51)."""
+    other_org = await OrganizationService(db).create_organization(name="SAListOrg")
+    sa_service = ServiceAccountService(db)
+    await sa_service.create_service_account(name="alpha", organization_id=test_org.id)
+    await sa_service.create_service_account(name="beta", organization_id=other_org.id)
+
+    resp = await superuser_client.get(f"{PREFIX}/")
+    assert resp.status_code == 200
+    names = {sa["name"] for sa in resp.json()}
+    assert names == {"alpha", "beta"}
+
+
+@pytest.mark.asyncio
 async def test_read_cross_org_service_account_is_404(admin_sa_client, db):
     other_org = await OrganizationService(db).create_organization(name="OtherSAOrg")
     other_sa = await ServiceAccountService(db).create_service_account(
