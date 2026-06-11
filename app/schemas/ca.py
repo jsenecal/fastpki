@@ -15,6 +15,11 @@ class CACreate(BaseModel):
     crl_base_url: str | None = None
 
 
+class CAAssignOrganization(BaseModel):
+    organization_id: int
+    cascade: bool = False
+
+
 class CAResponse(BaseModel):
     model_config = {"from_attributes": True}
 

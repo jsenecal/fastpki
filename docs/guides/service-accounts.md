@@ -137,6 +137,12 @@ Authorization then follows the same rules as a user (see
   `created_by_service_account_id`);
 - it can never reach resources in another organization or unowned resources.
 
+!!! tip "Pre-organization CAs"
+    On instances that predate organizations, existing CAs have no
+    organization and are therefore out of reach for service accounts. A
+    superuser can adopt them into an organization — see
+    [Adopting Pre-Organization Resources](organizations.md#adopting-pre-organization-resources).
+
 !!! info "Issuance policies (next phase)"
     Capability flags are coarse — `can_create_cert` lets an account issue any
     certificate its organization allows. Fine-grained, deny-by-default

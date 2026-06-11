@@ -316,6 +316,31 @@ Get direct child CAs of the specified CA.
 
 **Response** `200`: Array of child CA objects. **Errors:** `403`, `404`.
 
+### `PATCH /cas/{ca_id}`
+
+Assign a CA to an organization. Intended for adopting resources created on
+pre-organization instances (where `organization_id` is null) so that
+organization-scoped users and service accounts can use them.
+
+- **Auth required:** Superuser
+- **Audit-logged**
+
+**Request body:**
+
+```json
+{
+  "organization_id": 1,
+  "cascade": false
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `organization_id` | integer | Yes | Organization to assign the CA to |
+| `cascade` | boolean | No | Also adopt descendant CAs and issued certificates that are org-less (default `false`). Resources owned by a different organization are left untouched, and traversal stops at such CAs |
+
+**Response** `200`: Updated CA object. **Errors:** `400` (unknown organization), `403`, `404`.
+
 ### `DELETE /cas/{ca_id}`
 
 Delete a CA and all its certificates. CAs with child CAs cannot be deleted.

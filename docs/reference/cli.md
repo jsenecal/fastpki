@@ -12,6 +12,7 @@ The `fastpki` CLI is installed with `pip install fastpki[cli]`.
 | `fastpki ca list` | List certificate authorities |
 | `fastpki ca show <id>` | Show CA details |
 | `fastpki ca create` | Create a new CA |
+| `fastpki ca assign-org <id>` | Assign a CA to an organization (superuser) |
 | `fastpki ca delete <id>` | Delete a CA |
 | `fastpki ca chain <id>` | Show CA chain to root |
 | `fastpki ca children <id>` | List child CAs |
@@ -81,6 +82,7 @@ Every API endpoint has a corresponding CLI command:
 | `GET /api/v1/cas/{id}/private-key` | `fastpki ca private-key` |
 | `GET /api/v1/cas/{id}/chain` | `fastpki ca chain` |
 | `GET /api/v1/cas/{id}/children` | `fastpki ca children` |
+| `PATCH /api/v1/cas/{id}` | `fastpki ca assign-org` |
 | `DELETE /api/v1/cas/{id}` | `fastpki ca delete` |
 | `POST /api/v1/certificates/` | `fastpki cert create` |
 | `POST /api/v1/certificates/sign-csr` | `fastpki cert sign-csr` |

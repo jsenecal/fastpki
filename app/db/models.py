@@ -39,6 +39,7 @@ class CertificateType(str, Enum):
 
 class AuditAction(str, Enum):
     CA_CREATE = "ca_create"
+    CA_UPDATE = "ca_update"
     CA_DELETE = "ca_delete"
     CA_EXPORT_PRIVATE_KEY = "ca_export_private_key"
     CERT_CREATE = "cert_create"
