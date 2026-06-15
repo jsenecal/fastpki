@@ -10,6 +10,9 @@ All settings are configured via environment variables and can be placed in a `.e
 | `PROJECT_NAME` | `str` | `FastPKI` | — | OpenAPI docs title |
 | `DATABASE_URL` | `str` | `sqlite+aiosqlite:///./fastpki.db` | Auto-converts `sqlite` to `sqlite+aiosqlite` and `postgresql` to `postgresql+asyncpg` | Database connection string |
 | `DATABASE_CONNECT_ARGS` | `dict` | `{}` | — | Additional connection arguments passed to the engine |
+| `DB_POOL_PRE_PING` | `bool` | `true` | — | Validate a pooled connection before use; transparently recycles dead/stale connections instead of hanging on them |
+| `DB_POOL_RECYCLE` | `int` | `300` | — | Retire pooled connections older than this many seconds (`-1` disables). Guards against upstream idle timeouts dropping connections |
+| `DB_COMMAND_TIMEOUT` | `float` | `30.0` | — | asyncpg per-command timeout in seconds (`<= 0` disables). Makes a query on a half-open socket raise instead of hanging forever. Ignored for non-asyncpg drivers (e.g. sqlite) |
 | `CA_KEY_SIZE` | `int` | `4096` | — | Default RSA key size for CAs |
 | `CA_CERT_DAYS` | `int` | `3650` | — | Default CA certificate validity (days) |
 | `CERT_KEY_SIZE` | `int` | `2048` | — | Default RSA key size for certificates |

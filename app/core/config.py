@@ -24,6 +24,17 @@ class Settings(BaseSettings):
     DATABASE_URL: str | None = "sqlite+aiosqlite:///./fastpki.db"
     DATABASE_CONNECT_ARGS: dict[str, Any] = {}
 
+    # Database connection resilience (issue #57). Without these, a dead/stale
+    # pooled connection (e.g. after a Postgres failover or an idle-timeout on a
+    # tunnel) causes queries to hang indefinitely instead of failing fast.
+    # - DB_POOL_PRE_PING: validate a connection before handing it out.
+    # - DB_POOL_RECYCLE: retire connections older than N seconds (-1 disables).
+    # - DB_COMMAND_TIMEOUT: asyncpg per-command timeout in seconds; <=0 disables.
+    #   Ignored for non-asyncpg drivers (e.g. sqlite/aiosqlite).
+    DB_POOL_PRE_PING: bool = True
+    DB_POOL_RECYCLE: int = 300
+    DB_COMMAND_TIMEOUT: float = 30.0
+
     @field_validator("DATABASE_URL")
     def validate_database_url(cls, v: str | None) -> Any:  # noqa: N805
         if v and v.startswith("sqlite"):

@@ -3,20 +3,22 @@ import contextlib
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from app.api import api_router
 from app.api.auth import limiter
 from app.api.pki import ca_router, crl_router
 from app.core.config import logger, settings
-from app.db.session import create_db_and_tables
+from app.db.session import create_db_and_tables, get_session
 from app.services.encryption import encrypt_existing_keys
 
 
@@ -108,6 +110,22 @@ def create_app(enable_docs: bool | None = None) -> FastAPI:
     @application.get("/")
     async def root() -> dict[str, str]:
         return {"message": "Welcome to FastPKI - API-based PKI management system."}
+
+    @application.get("/health")
+    async def health(
+        db: AsyncSession = Depends(get_session),  # noqa: B008
+    ) -> Response:
+        """Liveness/readiness probe that verifies database connectivity.
+
+        K8s probes should target this rather than `/` so a wedged or
+        unreachable database is actually detected (issue #57).
+        """
+        try:
+            await db.execute(text("SELECT 1"))
+        except Exception:
+            logger.exception("Health check failed: database unreachable")
+            return JSONResponse(status_code=503, content={"status": "unavailable"})
+        return JSONResponse(status_code=200, content={"status": "ok"})
 
     return application
 

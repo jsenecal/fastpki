@@ -644,3 +644,16 @@ Download a CA certificate in PEM format.
 
 - **Auth required:** None
 - **Content-Type:** `application/x-pem-file`
+
+## Health
+
+### `GET /health`
+
+Liveness/readiness probe that verifies database connectivity by running
+`SELECT 1`. Mounted at the application root (not under `/api/v1/`) and requires
+no authentication. Prefer this over `/` for Kubernetes probes so a wedged or
+unreachable database is actually detected.
+
+- **Auth required:** None
+- **`200`** `{"status": "ok"}` — database reachable
+- **`503`** `{"status": "unavailable"}` — database query failed
