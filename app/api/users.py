@@ -1,12 +1,14 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.api.deps import get_current_active_superuser, get_current_active_user
 from app.core.config import logger, settings
+from app.core.password_policy import PasswordPolicyError, validate_password
 from app.db.models import AuditAction, User, UserRole
 from app.db.session import get_session
 from app.schemas.user import User as UserSchema
@@ -284,6 +286,26 @@ async def update_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Superusers cannot downgrade themselves",
         )
+
+    # The schema cannot see the target's username/current email; re-check here.
+    if user_in.password is not None:
+        try:
+            validate_password(
+                user_in.password,
+                username=user.username,
+                email=user_in.email or user.email,
+            )
+        except PasswordPolicyError as e:
+            raise RequestValidationError(
+                [
+                    {
+                        "type": "value_error",
+                        "loc": ("body", "password"),
+                        "msg": f"Value error, {e}",
+                        "input": None,
+                    }
+                ]
+            ) from e
 
     # Update the user
     updated_user = await user_service.update_user(

@@ -24,13 +24,13 @@ async def _bootstrap_superuser(client):
         json={
             "username": "super",
             "email": "super@example.com",
-            "password": "password123",
+            "password": "Kestrel-Meadow-4821",
             "role": UserRole.SUPERUSER.value,
         },
     )
     login = await client.post(
         "/api/v1/auth/token",
-        data={"username": "super", "password": "password123"},
+        data={"username": "super", "password": "Kestrel-Meadow-4821"},
     )
     token = login.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}

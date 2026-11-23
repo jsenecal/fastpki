@@ -12,7 +12,7 @@ curl -s -X POST http://localhost:8000/api/v1/users/ \
   -d '{
     "username": "admin",
     "email": "admin@example.com",
-    "password": "securepassword",
+    "password": "tangerine-orbit-velvet-42",
     "role": "superuser"
   }' | python -m json.tool
 ```
@@ -43,7 +43,7 @@ FastPKI uses OAuth2 password flow. The token endpoint expects form-encoded data.
 
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/token \
-  -d "username=admin&password=securepassword" | python -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+  -d "username=admin&password=tangerine-orbit-velvet-42" | python -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 echo $TOKEN
 ```

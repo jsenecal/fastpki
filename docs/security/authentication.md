@@ -12,7 +12,7 @@ FastPKI uses JWT (JSON Web Tokens) with OAuth2 password flow for authentication.
 
 ```bash
 curl -s -X POST http://localhost:8000/api/v1/auth/token \
-  -d "username=admin&password=securepassword"
+  -d "username=admin&password=tangerine-orbit-velvet-42"
 ```
 
 ??? example "Response"
@@ -40,7 +40,7 @@ curl -s http://localhost:8000/api/v1/users/me \
 
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/token \
-  -d "username=admin&password=securepassword" \
+  -d "username=admin&password=tangerine-orbit-velvet-42" \
   | python -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 # Use in subsequent requests
@@ -109,6 +109,38 @@ The following operations can be performed without a token:
 By default, unauthenticated user registration is **disabled** after the first user is created. Set `ALLOW_UNAUTHENTICATED_REGISTRATION=true` to allow unauthenticated creation of regular user accounts. Superuser and admin accounts always require authentication.
 
 All other API endpoints require a valid bearer token.
+
+## Password Policy
+
+FastPKI follows [NIST SP 800-63B](https://pages.nist.gov/800-63-4/sp800-63b.html) guidance: favour length and block known-bad passwords instead of imposing composition rules. The policy is enforced whenever a password is **set or changed** — `POST /api/v1/users/` and `PATCH /api/v1/users/{user_id}` with a `password` field.
+
+| Rule | Detail |
+|------|--------|
+| Minimum length | 12 characters (configurable via `PASSWORD_MIN_LENGTH`, allowed range 8–72) |
+| Maximum length | 72 bytes once UTF-8 encoded (72 ASCII characters, fewer with multi-byte characters). bcrypt only hashes the first 72 bytes, so longer passwords are rejected rather than silently truncated. |
+| Common passwords | Rejected if found (case-insensitively) in a bundled list of ~47,000 common/breached passwords, derived from the [SecLists](https://github.com/danielmiessler/SecLists) `100k-most-used-passwords-NCSC.txt` and `10k-most-common.txt` lists (MIT License). The list ships with the server; no network lookup is made. |
+| Personal information | Rejected if it equals or contains the username or the local part of the email address (case-insensitive; identifiers shorter than 3 characters are ignored). |
+| Composition | **No** character-class requirements (upper/lower/digit/symbol). Passphrases such as `tangerine-orbit-velvet-42` are encouraged. |
+
+A violation returns `422 Unprocessable Entity` with a message describing the rule, for example:
+
+```json
+{
+    "detail": [
+        {
+            "type": "value_error",
+            "loc": ["body", "password"],
+            "msg": "Value error, Password is too common; choose a less predictable password",
+            "input": "[redacted]"
+        }
+    ]
+}
+```
+
+Password values (and refresh tokens) are always redacted from `422` responses.
+
+!!! note "Existing passwords"
+    The policy is not applied at login. Users whose password was set before the policy was introduced can still log in, and are only held to the policy the next time they change it.
 
 ## Failed Login Attempts
 

@@ -1,7 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, ValidationInfo, field_validator
 
+from app.core.password_policy import validate_password
 from app.db.models import UserRole
 
 
@@ -23,10 +24,12 @@ class UserCreate(UserBase):
 
     @field_validator("password")
     @classmethod
-    def password_min_length(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("Min 8 chars")  # noqa: TRY003
-        return v
+    def password_policy(cls, v: str, info: ValidationInfo) -> str:
+        # username/email are declared before password, so they are already
+        # validated and available in info.data (absent if they failed).
+        return validate_password(
+            v, username=info.data.get("username"), email=info.data.get("email")
+        )
 
 
 class UserUpdate(BaseModel):
@@ -43,10 +46,12 @@ class UserUpdate(BaseModel):
 
     @field_validator("password")
     @classmethod
-    def password_min_length(cls, v: str | None) -> str | None:
-        if v is not None and len(v) < 8:
-            raise ValueError("Min 8 chars")  # noqa: TRY003
-        return v
+    def password_policy(cls, v: str | None, info: ValidationInfo) -> str | None:
+        # The target user's username (and current email) are not known here;
+        # the PATCH /users/{id} endpoint re-checks against them.
+        if v is None:
+            return v
+        return validate_password(v, email=info.data.get("email"))
 
 
 class UserInDBBase(UserBase):

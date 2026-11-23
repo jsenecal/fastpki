@@ -12,7 +12,7 @@ async def test_first_user_bootstrap_as_superuser(client):
         json={
             "username": "bootstrap_super",
             "email": "bootstrap@example.com",
-            "password": "password123",
+            "password": "Kestrel-Meadow-4821",
             "role": UserRole.SUPERUSER.value,
         },
     )
@@ -31,14 +31,14 @@ async def test_login_as_bootstrapped_superuser(client):
         json={
             "username": "loginsuper",
             "email": "loginsuper@example.com",
-            "password": "password123",
+            "password": "Kestrel-Meadow-4821",
             "role": UserRole.SUPERUSER.value,
         },
     )
 
     response = await client.post(
         "/api/v1/auth/token",
-        data={"username": "loginsuper", "password": "password123"},
+        data={"username": "loginsuper", "password": "Kestrel-Meadow-4821"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -54,14 +54,14 @@ async def test_authenticated_superuser_creates_another_superuser(client):
         json={
             "username": "super1",
             "email": "super1@example.com",
-            "password": "password123",
+            "password": "Kestrel-Meadow-4821",
             "role": UserRole.SUPERUSER.value,
         },
     )
 
     login = await client.post(
         "/api/v1/auth/token",
-        data={"username": "super1", "password": "password123"},
+        data={"username": "super1", "password": "Kestrel-Meadow-4821"},
     )
     token = login.json()["access_token"]
 
@@ -70,7 +70,7 @@ async def test_authenticated_superuser_creates_another_superuser(client):
         json={
             "username": "super2",
             "email": "super2@example.com",
-            "password": "password123",
+            "password": "Kestrel-Meadow-4821",
             "role": UserRole.SUPERUSER.value,
         },
         headers={"Authorization": f"Bearer {token}"},
@@ -87,7 +87,7 @@ async def test_unauthenticated_superuser_creation_rejected(client):
         json={
             "username": "existing",
             "email": "existing@example.com",
-            "password": "password123",
+            "password": "Kestrel-Meadow-4821",
             "role": UserRole.SUPERUSER.value,
         },
     )
@@ -97,7 +97,7 @@ async def test_unauthenticated_superuser_creation_rejected(client):
         json={
             "username": "sneakysuper",
             "email": "sneaky@example.com",
-            "password": "password123",
+            "password": "Kestrel-Meadow-4821",
             "role": UserRole.SUPERUSER.value,
         },
     )
@@ -116,7 +116,7 @@ async def test_unauthenticated_user_creation_rejected_by_default(client):
         json={
             "username": "firstuser",
             "email": "first@example.com",
-            "password": "password123",
+            "password": "Kestrel-Meadow-4821",
             "role": UserRole.SUPERUSER.value,
         },
     )
@@ -126,7 +126,7 @@ async def test_unauthenticated_user_creation_rejected_by_default(client):
         json={
             "username": "seconduser",
             "email": "second@example.com",
-            "password": "password123",
+            "password": "Kestrel-Meadow-4821",
         },
     )
     assert response.status_code == 403
@@ -143,7 +143,7 @@ async def test_unauthenticated_user_creation_allowed_when_enabled(client, monkey
         json={
             "username": "firstuser",
             "email": "first@example.com",
-            "password": "password123",
+            "password": "Kestrel-Meadow-4821",
             "role": UserRole.SUPERUSER.value,
         },
     )
@@ -153,7 +153,7 @@ async def test_unauthenticated_user_creation_allowed_when_enabled(client, monkey
         json={
             "username": "publicuser",
             "email": "public@example.com",
-            "password": "password123",
+            "password": "Kestrel-Meadow-4821",
         },
     )
     assert response.status_code == 201
@@ -172,7 +172,7 @@ async def test_unauthenticated_superuser_rejected_even_when_registration_enabled
         json={
             "username": "firstuser",
             "email": "first@example.com",
-            "password": "password123",
+            "password": "Kestrel-Meadow-4821",
             "role": UserRole.SUPERUSER.value,
         },
     )
@@ -182,7 +182,7 @@ async def test_unauthenticated_superuser_rejected_even_when_registration_enabled
         json={
             "username": "sneakysuper",
             "email": "sneaky@example.com",
-            "password": "password123",
+            "password": "Kestrel-Meadow-4821",
             "role": UserRole.SUPERUSER.value,
         },
     )

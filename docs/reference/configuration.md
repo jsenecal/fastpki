@@ -24,6 +24,7 @@ All settings are configured via environment variables and can be placed in a `.e
 | `PRIVATE_KEY_ENCRYPTION_KEY` | `str` or `null` | `null` | Must be a valid Fernet key if set | Encryption key for private keys at rest |
 | `LOG_LEVEL` | `str` | `INFO` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` | Application log level |
 | `BACKEND_CORS_ORIGINS` | `list[str]` | `["*"]` | — | Allowed CORS origins |
+| `PASSWORD_MIN_LENGTH` | `int` | `12` | Must be between 8 and 72 | Minimum password length enforced when a password is set or changed. See [Password Policy](../security/authentication.md#password-policy) |
 | `ALLOW_UNAUTHENTICATED_REGISTRATION` | `bool` | `false` | — | Allow unauthenticated user registration. First user bootstrap always works regardless. |
 | `ENABLE_DOCS` | `bool` | `false` | — | When `true`, exposes `/docs` (Swagger UI), `/redoc`, and `/api/v1/openapi.json`. Disabled by default to avoid leaking the API schema in production. |
 

@@ -57,13 +57,13 @@ fastpki config path               # Show config file location
 ### Login
 
 ```bash
-fastpki auth login -u admin -p securepassword
+fastpki auth login -u admin -p tangerine-orbit-velvet-42
 ```
 
 You can also set the server during login:
 
 ```bash
-fastpki auth login -u admin -p securepassword -s https://pki.example.com
+fastpki auth login -u admin -p tangerine-orbit-velvet-42 -s https://pki.example.com
 ```
 
 If you omit `-u` or `-p`, you will be prompted interactively (password input is hidden).
@@ -264,7 +264,7 @@ fastpki user me
 fastpki user create \
   --username alice \
   --email alice@example.com \
-  --password secret123 \
+  --password sunflower-harbor-velvet-7 \
   --role user \
   --can-create-cert
 ```

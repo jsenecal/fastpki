@@ -45,7 +45,7 @@ async def test_create_user(client):
     user_data = {
         "username": "newuser",
         "email": "new@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
 
     response = await client.post("/api/v1/users/", json=user_data)
@@ -65,7 +65,7 @@ async def test_create_user_duplicate_username(client):
     user_data = {
         "username": "duplicate",
         "email": "dup1@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
 
     await client.post("/api/v1/users/", json=user_data)
@@ -74,7 +74,7 @@ async def test_create_user_duplicate_username(client):
     duplicate_data = {
         "username": "duplicate",
         "email": "dup2@example.com",
-        "password": "password456",
+        "password": "Lantern-Copper-9375",
     }
 
     response = await client.post("/api/v1/users/", json=duplicate_data)
@@ -91,7 +91,7 @@ async def test_create_user_duplicate_email(client):
     user_data = {
         "username": "emailuser1",
         "email": "same@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
 
     await client.post("/api/v1/users/", json=user_data)
@@ -100,7 +100,7 @@ async def test_create_user_duplicate_email(client):
     duplicate_data = {
         "username": "emailuser2",
         "email": "same@example.com",
-        "password": "password456",
+        "password": "Lantern-Copper-9375",
     }
 
     response = await client.post("/api/v1/users/", json=duplicate_data)
@@ -117,7 +117,7 @@ async def test_get_users(client, db):
     superuser_data = {
         "username": "superadmin",
         "email": "super@example.com",
-        "password": "superpass",
+        "password": "Granite-Willow-5739",
         "role": UserRole.SUPERUSER.value,
     }
 
@@ -125,15 +125,28 @@ async def test_get_users(client, db):
 
     # Login as superuser
     login_response = await client.post(
-        "/api/v1/auth/token", data={"username": "superadmin", "password": "superpass"}
+        "/api/v1/auth/token",
+        data={"username": "superadmin", "password": "Granite-Willow-5739"},
     )
     token = login_response.json()["access_token"]
 
     # Create multiple users using the superuser token
     users_data = [
-        {"username": "user1", "email": "user1@example.com", "password": "password1"},
-        {"username": "user2", "email": "user2@example.com", "password": "password2"},
-        {"username": "user3", "email": "user3@example.com", "password": "password3"},
+        {
+            "username": "user1",
+            "email": "user1@example.com",
+            "password": "Juniper-Falcon-1111",
+        },
+        {
+            "username": "user2",
+            "email": "user2@example.com",
+            "password": "Juniper-Falcon-2222",
+        },
+        {
+            "username": "user3",
+            "email": "user3@example.com",
+            "password": "Juniper-Falcon-3333",
+        },
     ]
 
     headers = {"Authorization": f"Bearer {token}"}
@@ -163,7 +176,7 @@ async def test_get_user_by_id(client, db):
     superuser_data = {
         "username": "superget",
         "email": "superget@example.com",
-        "password": "superpass",
+        "password": "Granite-Willow-5739",
         "role": UserRole.SUPERUSER.value,
     }
 
@@ -171,7 +184,8 @@ async def test_get_user_by_id(client, db):
 
     # Login as superuser
     login_response = await client.post(
-        "/api/v1/auth/token", data={"username": "superget", "password": "superpass"}
+        "/api/v1/auth/token",
+        data={"username": "superget", "password": "Granite-Willow-5739"},
     )
     token = login_response.json()["access_token"]
 
@@ -179,7 +193,7 @@ async def test_get_user_by_id(client, db):
     user_data = {
         "username": "getbyid",
         "email": "getbyid@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
 
     headers = {"Authorization": f"Bearer {token}"}
@@ -205,7 +219,7 @@ async def test_update_user(client, db):
     superuser_data = {
         "username": "superupdate",
         "email": "superupdate@example.com",
-        "password": "superpass",
+        "password": "Granite-Willow-5739",
         "role": UserRole.SUPERUSER.value,
     }
 
@@ -213,7 +227,8 @@ async def test_update_user(client, db):
 
     # Login as superuser
     login_response = await client.post(
-        "/api/v1/auth/token", data={"username": "superupdate", "password": "superpass"}
+        "/api/v1/auth/token",
+        data={"username": "superupdate", "password": "Granite-Willow-5739"},
     )
     token = login_response.json()["access_token"]
 
@@ -221,7 +236,7 @@ async def test_update_user(client, db):
     user_data = {
         "username": "updateme",
         "email": "update@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
 
     headers = {"Authorization": f"Bearer {token}"}
@@ -257,7 +272,7 @@ async def test_delete_user(client, db):
     superuser_data = {
         "username": "superdelete",
         "email": "superdelete@example.com",
-        "password": "superpass",
+        "password": "Granite-Willow-5739",
         "role": UserRole.SUPERUSER.value,
     }
 
@@ -265,7 +280,8 @@ async def test_delete_user(client, db):
 
     # Login as superuser
     login_response = await client.post(
-        "/api/v1/auth/token", data={"username": "superdelete", "password": "superpass"}
+        "/api/v1/auth/token",
+        data={"username": "superdelete", "password": "Granite-Willow-5739"},
     )
     token = login_response.json()["access_token"]
 
@@ -273,7 +289,7 @@ async def test_delete_user(client, db):
     user_data = {
         "username": "deleteme",
         "email": "delete@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
 
     headers = {"Authorization": f"Bearer {token}"}
@@ -299,7 +315,7 @@ async def test_regular_user_cannot_access_other_users(client, db):
     superuser_data = {
         "username": "superaccess",
         "email": "superaccess@example.com",
-        "password": "superpass",
+        "password": "Granite-Willow-5739",
         "role": UserRole.SUPERUSER.value,
     }
 
@@ -307,7 +323,8 @@ async def test_regular_user_cannot_access_other_users(client, db):
 
     # Login as superuser
     login_response = await client.post(
-        "/api/v1/auth/token", data={"username": "superaccess", "password": "superpass"}
+        "/api/v1/auth/token",
+        data={"username": "superaccess", "password": "Granite-Willow-5739"},
     )
     super_token = login_response.json()["access_token"]
 
@@ -315,13 +332,13 @@ async def test_regular_user_cannot_access_other_users(client, db):
     user1_data = {
         "username": "user1access",
         "email": "user1@example.com",
-        "password": "password1",
+        "password": "Juniper-Falcon-1111",
     }
 
     user2_data = {
         "username": "user2access",
         "email": "user2@example.com",
-        "password": "password2",
+        "password": "Juniper-Falcon-2222",
     }
 
     # We'll use _ for unused response variable
@@ -335,7 +352,8 @@ async def test_regular_user_cannot_access_other_users(client, db):
 
     # Login as user1
     login_response = await client.post(
-        "/api/v1/auth/token", data={"username": "user1access", "password": "password1"}
+        "/api/v1/auth/token",
+        data={"username": "user1access", "password": "Juniper-Falcon-1111"},
     )
     token = login_response.json()["access_token"]
 

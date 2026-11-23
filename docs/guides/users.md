@@ -12,7 +12,7 @@ curl -s -X POST http://localhost:8000/api/v1/users/ \
   -d '{
     "username": "admin",
     "email": "admin@example.com",
-    "password": "securepassword",
+    "password": "tangerine-orbit-velvet-42",
     "role": "superuser"
   }' | python -m json.tool
 ```
@@ -28,7 +28,7 @@ curl -s -X POST http://localhost:8000/api/v1/users/ \
   -d '{
     "username": "alice",
     "email": "alice@example.com",
-    "password": "alicepassword",
+    "password": "sunflower-harbor-velvet-7",
     "role": "user",
     "organization_id": 1,
     "can_create_cert": true,
@@ -40,7 +40,7 @@ curl -s -X POST http://localhost:8000/api/v1/users/ \
 |-------|----------|---------|-------------|
 | `username` | Yes | — | Unique username |
 | `email` | Yes | — | Unique email address |
-| `password` | Yes | — | Minimum 8 characters |
+| `password` | Yes | — | Must satisfy the [password policy](../security/authentication.md#password-policy) (12–72 bytes, not common, not containing the username/email) |
 | `role` | No | `user` | `superuser`, `admin`, or `user` |
 | `organization_id` | No | `null` | Assign to an organization on creation |
 | `can_create_ca` | No | `false` | Allow creating CAs |
@@ -91,7 +91,7 @@ curl -s -X PATCH http://localhost:8000/api/v1/users/2 \
 | Field | Description | Who can change it |
 |-------|-------------|-------------------|
 | `email` | New email address | Self, Admin (same org), Superuser |
-| `password` | New password (min 8 chars) | Self, Admin (same org), Superuser |
+| `password` | New password; must satisfy the [password policy](../security/authentication.md#password-policy) | Self, Admin (same org), Superuser |
 | `role` | Change role | Superuser only |
 | `is_active` | Activate / deactivate | Superuser only |
 | `organization_id` | Change organization | Superuser only |

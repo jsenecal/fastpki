@@ -96,7 +96,7 @@ Create a new user.
 |-------|------|----------|---------|-------------|
 | `username` | `string` | Yes | — | Unique username |
 | `email` | `string` | Yes | — | Unique email |
-| `password` | `string` | Yes | — | Min 8 characters |
+| `password` | `string` | Yes | — | Must satisfy the [password policy](../security/authentication.md#password-policy) |
 | `role` | `string` | No | `user` | `superuser`, `admin`, `user` |
 | `organization_id` | `int` | No | `null` | Organization to assign |
 | `can_create_ca` | `bool` | No | `false` | Capability flag |
@@ -107,7 +107,7 @@ Create a new user.
 
 **Response** `201`: User object.
 
-**Errors:** `400` — username/email already exists. `403` — insufficient permissions for role.
+**Errors:** `400` — username/email already exists. `403` — insufficient permissions for role. `422` — validation error, including password policy violations.
 
 ### `GET /users/`
 
@@ -158,7 +158,7 @@ Update a user.
 | `can_export_private_key` | `bool` | Admin (same org), Superuser |
 | `can_delete_ca` | `bool` | Admin (same org), Superuser |
 
-**Response** `200`: Updated user object. **Errors:** `403`, `404`.
+**Response** `200`: Updated user object. **Errors:** `403`, `404`, `422` (validation error, including a new `password` that violates the [password policy](../security/authentication.md#password-policy)).
 
 ### `DELETE /users/{user_id}`
 
