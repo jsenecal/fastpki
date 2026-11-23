@@ -18,7 +18,7 @@ Full documentation: [jsenecal.github.io/fastpki](https://jsenecal.github.io/fast
 - Organization management for multi-tenant deployments
 - Role-based access control (SUPERUSER, ADMIN, USER)
 - Per-user capability flags for fine-grained permissions
-- Ownership-based access control on CAs and certificates
+- Organization-scoped access control on CAs and certificates
 - RESTful API for easy integration
 - Compatible with SQLite and PostgreSQL
 - Database migrations with Alembic
@@ -159,10 +159,13 @@ FastPKI has three user roles:
 Permission checks follow this order:
 
 1. **Superusers** have full access to everything
-2. **Resource creators** have full access to their own resources
-3. **Admins** have full access to all resources within their organization
-4. **Users** can read resources within their organization
-5. **Per-user capability flags** grant specific write actions to regular users
+2. **Admins** have full access to all resources within their organization
+3. **Users** can read resources within their organization
+4. **Per-user capability flags** grant specific write actions to regular users
+
+Creating a resource grants no additional rights: `created_by_*` fields are kept
+for attribution only, and access always follows the caller's current role,
+organization, and capability flags.
 
 ### Capability Flags
 

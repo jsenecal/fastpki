@@ -26,7 +26,7 @@ class Principal:
     can_delete_ca: bool
 
     def creator_fields(self) -> dict[str, int]:
-        """`created_by_*` kwargs for resource creation, keyed by principal kind."""
+        """`created_by_*` attribution kwargs (audit only), keyed by principal kind."""
         if self.kind == "service_account":
             return {"created_by_service_account_id": self.id}
         return {"created_by_user_id": self.id}
@@ -56,7 +56,7 @@ class Principal:
             id=sa.id,
             organization_id=sa.organization_id,
             # Service accounts are never SUPERUSER/ADMIN; they authorize purely
-            # via org scope, resource ownership, and capability flags.
+            # via org scope and capability flags.
             role=UserRole.USER,
             is_active=sa.disabled_at is None,
             display_name=sa.name,
