@@ -151,3 +151,42 @@ async def test_tightened_policy_blocks_renewal(db, ca, org):
     assert resp.status_code == 400
     assert resp.json()["detail"]["code"] == "policy_violation"
     assert resp.json()["detail"]["field"] == "cn_patterns"
+
+
+@pytest.mark.asyncio
+async def test_sa_renews_ip_only_cert_under_dns_denying_policy(db, ca, org):
+    """Issue #53: a cert minted under a DNS-SAN-less policy stays renewable."""
+    sa = await ServiceAccountService(db).create_service_account(
+        name="ip-sa", organization_id=org.id, can_create_cert=True
+    )
+    await IssuancePolicyService(db).set_policy(
+        sa.id,
+        cn_patterns=["*"],
+        san_dns_patterns=[],
+        san_ip_cidrs=["10.24.0.0/13"],
+        san_email_domains=[],
+        allowed_ca_ids=[ca.id],
+        allowed_certificate_types=[CertificateType.SERVER],
+        max_validity_days=90,
+    )
+    async with _client(Principal.from_service_account(sa)) as c:
+        created = await c.post(
+            f"/api/v1/certificates/?ca_id={ca.id}",
+            json={
+                "common_name": "node.internal",
+                "subject_dn": "CN=node.internal",
+                "certificate_type": CertificateType.SERVER.value,
+                "valid_days": 30,
+                "san_ip_addresses": ["10.24.0.7"],
+            },
+        )
+        assert created.status_code == 201, created.text
+        renewed = await c.post(
+            f"/api/v1/certificates/{created.json()['id']}/renew", json={}
+        )
+    assert renewed.status_code == 201, renewed.text
+    dns, ips, _ = CertificateService.extract_cert_san_names(
+        renewed.json()["certificate"]
+    )
+    assert dns == []
+    assert ips == ["10.24.0.7"]

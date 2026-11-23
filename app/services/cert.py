@@ -42,6 +42,40 @@ CertPublicKey = (
 )
 
 
+_DNS_LABEL_RE = re.compile(r"^(?!-)[A-Za-z0-9_-]{1,63}(?<!-)$")
+_EMAIL_RE = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
+
+
+def is_valid_dns_name(name: str) -> bool:
+    """Return True if ``name`` is usable as a DNS SAN (wildcard allowed leftmost).
+
+    ASCII letters, digits, hyphens and underscores per label, 1-63 chars per
+    label, at most 253 chars overall. IP-address literals are rejected: they
+    belong in an IP SAN, not a DNS SAN.
+    """
+    if not name or len(name) > 253:
+        return False
+    try:
+        ipaddress.ip_address(name)
+    except ValueError:
+        pass
+    else:
+        return False
+    labels = name.split(".")
+    if labels[0] == "*" and len(labels) > 1:
+        labels = labels[1:]
+    return all(_DNS_LABEL_RE.match(label) for label in labels)
+
+
+@dataclass(frozen=True)
+class EffectiveSans:
+    """The SANs a certificate will actually carry (after auto-population)."""
+
+    san_dns_names: list[str] | None
+    san_ip_addresses: list[str] | None
+    san_email_addresses: list[str] | None
+
+
 @dataclass
 class ResolvedCsrFields:
     """Effective issuance fields for a CSR sign request (post-override)."""
@@ -201,19 +235,16 @@ class CertificateService:
                         "IP SANs are not allowed for client certificates"
                     )
 
-            # Auto-populate from common_name if no explicit SANs provided
-            if certificate_type in (
-                CertificateType.SERVER,
-                CertificateType.DUAL_PURPOSE,
-            ):
-                if not san_dns_names:
-                    san_dns_names = [common_name]
-            elif (
-                certificate_type == CertificateType.CLIENT
-                and not san_email_addresses
-                and re.match(r"^[^@]+@[^@]+\.[^@]+$", common_name)
-            ):
-                san_email_addresses = [common_name]
+            effective = self.effective_san_names(
+                certificate_type,
+                common_name,
+                san_dns_names,
+                san_ip_addresses,
+                san_email_addresses,
+            )
+            san_dns_names = effective.san_dns_names
+            san_ip_addresses = effective.san_ip_addresses
+            san_email_addresses = effective.san_email_addresses
 
             # Add DNS names
             if san_dns_names:
@@ -320,6 +351,45 @@ class CertificateService:
         return cert
 
     @staticmethod
+    def effective_san_names(
+        certificate_type: CertificateType,
+        common_name: str,
+        san_dns_names: list[str] | None,
+        san_ip_addresses: list[str] | None,
+        san_email_addresses: list[str] | None,
+    ) -> EffectiveSans:
+        """Compute the SANs a certificate will carry, including auto-population.
+
+        This is the single source of truth shared by issuance and issuance
+        policy enforcement, so the policy always sees exactly what lands in the
+        x509 (idempotent: feeding the result back in returns it unchanged).
+
+        - CA certificates carry no SANs.
+        - Server / dual-purpose: when *no* SAN of any kind was requested, the
+          common name is added as a DNS SAN, but only if it is a valid DNS
+          name. Any explicit SAN list (e.g. IP-only) is taken verbatim.
+        - Client: the common name is added as an email SAN when it looks like
+          an email address and no email SANs were requested.
+        """
+        dns = list(san_dns_names) if san_dns_names else None
+        ips = list(san_ip_addresses) if san_ip_addresses else None
+        emails = list(san_email_addresses) if san_email_addresses else None
+
+        if certificate_type == CertificateType.CA:
+            return EffectiveSans(None, None, None)
+
+        if certificate_type in (
+            CertificateType.SERVER,
+            CertificateType.DUAL_PURPOSE,
+        ):
+            if not (dns or ips or emails) and is_valid_dns_name(common_name):
+                dns = [common_name]
+        elif not emails and _EMAIL_RE.match(common_name):
+            emails = [common_name]
+
+        return EffectiveSans(dns, ips, emails)
+
+    @staticmethod
     def parse_csr(csr_pem: str) -> x509.CertificateSigningRequest:
         """Parse and verify a PEM-encoded CSR."""
         try:
@@ -355,6 +425,7 @@ class CertificateService:
         self,
         csr_pem: str,
         *,
+        certificate_type: CertificateType,
         common_name: str | None = None,
         subject_dn: str | None = None,
         san_dns_names: list[str] | None = None,
@@ -364,8 +435,9 @@ class CertificateService:
         """Resolve the effective issuance fields for a CSR sign request.
 
         Extracts the subject and SANs from the CSR, then applies any explicit
-        overrides. Returned values are exactly what the issued certificate will
-        carry, so callers (e.g. policy enforcement) can inspect them up front.
+        overrides and SAN auto-population (see ``effective_san_names``).
+        Returned values are exactly what the issued certificate will carry, so
+        callers (e.g. policy enforcement) can inspect them up front.
         """
         csr = self.parse_csr(csr_pem)
 
@@ -386,20 +458,20 @@ class CertificateService:
         csr_subject_dn = ",".join(csr_subject_parts)
         csr_dns, csr_ips, csr_emails = self.extract_csr_san_names(csr)
 
+        effective_cn = common_name or csr_cn
+        sans = self.effective_san_names(
+            certificate_type,
+            effective_cn,
+            san_dns_names if san_dns_names is not None else csr_dns,
+            san_ip_addresses if san_ip_addresses is not None else csr_ips,
+            san_email_addresses if san_email_addresses is not None else csr_emails,
+        )
         return ResolvedCsrFields(
-            common_name=common_name or csr_cn,
+            common_name=effective_cn,
             subject_dn=subject_dn or csr_subject_dn,
-            san_dns_names=(
-                san_dns_names if san_dns_names is not None else (csr_dns or None)
-            ),
-            san_ip_addresses=(
-                san_ip_addresses if san_ip_addresses is not None else (csr_ips or None)
-            ),
-            san_email_addresses=(
-                san_email_addresses
-                if san_email_addresses is not None
-                else (csr_emails or None)
-            ),
+            san_dns_names=sans.san_dns_names,
+            san_ip_addresses=sans.san_ip_addresses,
+            san_email_addresses=sans.san_email_addresses,
             public_key=csr.public_key(),
         )
 
@@ -422,6 +494,7 @@ class CertificateService:
         """Sign a CSR. Extracts defaults from the CSR; explicit params override."""
         fields = self.resolve_csr_fields(
             csr_pem,
+            certificate_type=certificate_type,
             common_name=common_name,
             subject_dn=subject_dn,
             san_dns_names=san_dns_names,
@@ -473,17 +546,22 @@ class CertificateService:
         """Compute the issuance parameters a renewal inherits from a predecessor.
 
         Subject, SANs, CA, type, and the original validity *duration* are
-        inherited; the renewed certificate starts now.
+        inherited; the renewed certificate starts now. SANs are normalised
+        through ``effective_san_names`` so policy re-evaluation sees exactly
+        what the renewed certificate will carry.
         """
         if predecessor.issuer_id is None:
             raise ValueError("Certificate has no issuer and cannot be renewed")  # noqa: TRY003
         dns, ips, emails = self.extract_cert_san_names(predecessor.certificate)
+        sans = self.effective_san_names(
+            predecessor.certificate_type, predecessor.common_name, dns, ips, emails
+        )
         return RenewalParams(
             common_name=predecessor.common_name,
             subject_dn=predecessor.subject_dn,
-            san_dns_names=dns or None,
-            san_ip_addresses=ips or None,
-            san_email_addresses=emails or None,
+            san_dns_names=sans.san_dns_names,
+            san_ip_addresses=sans.san_ip_addresses,
+            san_email_addresses=sans.san_email_addresses,
             ca_id=predecessor.issuer_id,
             certificate_type=predecessor.certificate_type,
             valid_days=predecessor.valid_days,

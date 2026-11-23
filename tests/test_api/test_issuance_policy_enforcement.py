@@ -11,6 +11,7 @@ from app.api.deps import get_current_principal
 from app.db.models import CertificateType
 from app.db.session import get_session
 from app.services.ca import CAService
+from app.services.cert import CertificateService
 from app.services.issuance_policy import IssuancePolicyService
 from app.services.organization import OrganizationService
 from app.services.principal import Principal
@@ -149,3 +150,110 @@ async def test_user_principal_bypasses_policy(db, org, ca):
             f"/api/v1/certificates/?ca_id={ca.id}", json=_body(cn="anything.test")
         )
     assert resp.status_code == 201, resp.text
+
+
+# --- Policy is evaluated against the effective SANs (issue #53) -----------
+
+
+async def _ip_only_policy(db, sa_id, ca_id):
+    """The policy from the issue: any CN, no DNS SANs, IPs in 10.24.0.0/13."""
+    return await IssuancePolicyService(db).set_policy(
+        sa_id,
+        cn_patterns=["*"],
+        san_dns_patterns=[],
+        san_ip_cidrs=["10.24.0.0/13"],
+        san_email_domains=[],
+        allowed_ca_ids=[ca_id],
+        allowed_certificate_types=[CertificateType.SERVER],
+        max_validity_days=90,
+    )
+
+
+def _sans(cert_pem: str) -> tuple[list[str], list[str]]:
+    dns, ips, _ = CertificateService.extract_cert_san_names(cert_pem)
+    return dns, ips
+
+
+@pytest.mark.asyncio
+async def test_ip_only_request_issues_without_dns_san_and_renews(db, sa, ca):
+    await _ip_only_policy(db, sa.id, ca.id)
+    body = {**_body(cn="node1.internal"), "san_ip_addresses": ["10.24.0.5"]}
+    async with _client_for(Principal.from_service_account(sa)) as c:
+        created = await c.post(f"/api/v1/certificates/?ca_id={ca.id}", json=body)
+        assert created.status_code == 201, created.text
+        assert _sans(created.json()["certificate"]) == ([], ["10.24.0.5"])
+
+        renewed = await c.post(
+            f"/api/v1/certificates/{created.json()['id']}/renew", json={}
+        )
+    assert renewed.status_code == 201, renewed.text
+    assert _sans(renewed.json()["certificate"]) == ([], ["10.24.0.5"])
+
+
+@pytest.mark.asyncio
+async def test_auto_populated_cn_dns_san_is_policy_checked(db, sa, ca):
+    """No SANs requested -> the CN becomes a DNS SAN, which the policy denies."""
+    await _ip_only_policy(db, sa.id, ca.id)
+    async with _client_for(Principal.from_service_account(sa)) as c:
+        resp = await c.post(
+            f"/api/v1/certificates/?ca_id={ca.id}", json=_body(cn="node1.internal")
+        )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == {
+        "code": "policy_violation",
+        "field": "san_dns_patterns",
+        "value": "node1.internal",
+    }
+
+
+@pytest.mark.asyncio
+async def test_sign_csr_auto_populated_cn_dns_san_is_policy_checked(db, sa, ca):
+    await _ip_only_policy(db, sa.id, ca.id)
+    async with _client_for(Principal.from_service_account(sa)) as c:
+        denied = await c.post(
+            "/api/v1/certificates/sign-csr",
+            json={
+                "csr": _make_csr("node2.internal"),
+                "ca_id": ca.id,
+                "certificate_type": CertificateType.SERVER.value,
+                "valid_days": 30,
+            },
+        )
+        allowed = await c.post(
+            "/api/v1/certificates/sign-csr",
+            json={
+                "csr": _make_csr("node2.internal"),
+                "ca_id": ca.id,
+                "certificate_type": CertificateType.SERVER.value,
+                "valid_days": 30,
+                "san_ip_addresses": ["10.24.0.6"],
+            },
+        )
+    assert denied.status_code == 400
+    assert denied.json()["detail"]["field"] == "san_dns_patterns"
+    assert denied.json()["detail"]["value"] == "node2.internal"
+    assert allowed.status_code == 201, allowed.text
+    assert _sans(allowed.json()["certificate"]) == ([], ["10.24.0.6"])
+
+
+@pytest.mark.asyncio
+async def test_user_ip_only_request_gets_no_cn_dns_san(db, org, ca):
+    """Behavior change for user callers too: explicit SANs are taken verbatim."""
+    user = await UserService(db).create_user(
+        username="iponly",
+        email="iponly@example.com",
+        password="password123",
+        organization_id=org.id,
+        can_create_cert=True,
+    )
+    body = {**_body(cn="host.example.com"), "san_ip_addresses": ["192.0.2.10"]}
+    async with _client_for(Principal.from_user(user)) as c:
+        resp = await c.post(f"/api/v1/certificates/?ca_id={ca.id}", json=body)
+        default = await c.post(
+            f"/api/v1/certificates/?ca_id={ca.id}", json=_body(cn="host.example.com")
+        )
+    assert resp.status_code == 201, resp.text
+    assert _sans(resp.json()["certificate"]) == ([], ["192.0.2.10"])
+    # No SANs requested at all: CN is still auto-added as a DNS SAN.
+    assert default.status_code == 201, default.text
+    assert _sans(default.json()["certificate"]) == (["host.example.com"], [])
