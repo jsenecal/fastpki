@@ -18,6 +18,8 @@ CAPABILITY_MAP: dict[PermissionAction, str] = {
     PermissionAction.DELETE_CA: "can_delete_ca",
 }
 
+ELEVATED_ROLE_DENIED = "Not enough permissions to create admin or superuser accounts"
+
 
 def _as_principal(actor: Principal | User) -> Principal:
     """Coerce a User into a Principal; pass a Principal through unchanged."""
@@ -75,6 +77,76 @@ class PermissionService:
         """
         return self._can_perform(
             _as_principal(actor), organization_id, None, None, action
+        )
+
+    @staticmethod
+    def authorize_user_creation(
+        actor: User | None,
+        role: UserRole,
+        organization_id: int | None,
+        *,
+        is_first_user: bool,
+        allow_unauthenticated_registration: bool,
+    ) -> int | None:
+        """Decide whether ``actor`` may create a user and return its org.
+
+        Returns the organization the new user must be placed in, or raises
+        ``PermissionDeniedError``. This is a pure decision with no DB access
+        so it can run before any uniqueness lookup (issue #8 ordering).
+
+        - First user in the system: bootstrap, any role, org as requested.
+        - Anonymous: USER role only, only when open registration is enabled,
+          and never into an organization (an org admin must add them).
+        - SUPERUSER: any role, any organization.
+        - ADMIN: USER role only, only in their own organization (defaulting
+          to it when none is requested).
+        - USER: may not create users.
+        """
+        if is_first_user:
+            return organization_id
+
+        elevated = role in (UserRole.ADMIN, UserRole.SUPERUSER)
+
+        if actor is None:
+            if elevated:
+                raise PermissionDeniedError(ELEVATED_ROLE_DENIED)
+            if not allow_unauthenticated_registration:
+                raise PermissionDeniedError("Unauthenticated registration is disabled")  # noqa: TRY003
+            return None
+
+        if actor.role == UserRole.SUPERUSER:
+            return organization_id
+
+        if actor.role != UserRole.ADMIN:
+            raise PermissionDeniedError("Not enough permissions to create users")  # noqa: TRY003
+        if elevated:
+            raise PermissionDeniedError(ELEVATED_ROLE_DENIED)
+        if actor.organization_id is None:
+            raise PermissionDeniedError(  # noqa: TRY003
+                "Admins without an organization cannot create users"
+            )
+        if organization_id is None:
+            return actor.organization_id
+        if organization_id != actor.organization_id:
+            raise PermissionDeniedError(  # noqa: TRY003
+                "Not enough permissions to create users in this organization"
+            )
+        return organization_id
+
+    @staticmethod
+    def can_manage_user(actor: User, target: User) -> bool:
+        """Whether ``actor`` may modify ``target``'s account.
+
+        Superusers manage everyone and every user manages themselves. An
+        ADMIN manages non-superuser accounts in their own organization only.
+        """
+        if actor.role == UserRole.SUPERUSER or actor.id == target.id:
+            return True
+        return (
+            actor.role == UserRole.ADMIN
+            and actor.organization_id is not None
+            and target.organization_id == actor.organization_id
+            and target.role != UserRole.SUPERUSER
         )
 
     @staticmethod
