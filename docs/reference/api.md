@@ -89,8 +89,18 @@ Invalidate all refresh tokens for the authenticated user, signing out every acti
 
 Create a new user.
 
-- **Auth required:** Optional (required for admin/superuser roles after first user)
+- **Auth required:** Optional for the first user (bootstrap) and for open self-registration; otherwise Admin or Superuser
 - **Content-Type:** `application/json`
+
+| Caller | Allowed roles | Resulting `organization_id` |
+|--------|---------------|-----------------------------|
+| First user (no users exist) | Any | As requested |
+| Superuser | Any | As requested |
+| Admin | `user` | Admin's own org (default when omitted); any other org → `403` |
+| User | — | `403` |
+| Unauthenticated (`ALLOW_UNAUTHENTICATED_REGISTRATION=true`) | `user` | Always `null` (request value ignored) |
+
+A supplied bearer token must be valid: an invalid, expired, or revoked token returns `401` instead of falling back to anonymous registration.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
@@ -107,7 +117,10 @@ Create a new user.
 
 **Response** `201`: User object.
 
-**Errors:** `400` — username/email already exists. `403` — insufficient permissions for role. `422` — validation error, including password policy violations.
+**Errors:** `400` — username/email already exists, or the caller's account is inactive. `401` — invalid bearer token. `403` — caller may not create users, may not create the requested role, may not create users in the requested organization, or unauthenticated registration is disabled. `422` — validation error, including password policy violations.
+
+!!! note "Anti-enumeration"
+    Authentication, the registration policy, and role/organization authorization are all checked **before** username/email uniqueness. A caller who is not allowed to create the account always receives the same `403`, whether or not the supplied username or email exists. The `400` duplicate errors are only returned to callers who are permitted to create the account (superusers, admins within their own organization, or anyone when `ALLOW_UNAUTHENTICATED_REGISTRATION=true`).
 
 ### `GET /users/`
 
@@ -142,7 +155,7 @@ Get a user by ID.
 
 Update a user.
 
-- **Auth required:** Self (limited fields), Admin (same org), or Superuser
+- **Auth required:** Self (limited fields), Admin (non-superuser accounts in the same org), or Superuser
 - **Content-Type:** `application/json`
 
 | Field | Type | Who can set |
@@ -230,7 +243,7 @@ Delete an organization.
 
 Add a user to an organization.
 
-- **Auth required:** Admin in the organization, or Superuser
+- **Auth required:** Admin in the organization (only for users not in any organization, and never superusers), or Superuser
 
 **Response** `200`: Updated user object. **Errors:** `403`, `404`.
 

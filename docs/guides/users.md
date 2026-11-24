@@ -19,7 +19,16 @@ curl -s -X POST http://localhost:8000/api/v1/users/ \
 
 ### Subsequent Users
 
-After the first user exists, creating users with `admin` or `superuser` roles requires authentication as a superuser. Regular users can be created by anyone.
+After the first user exists, who may create which accounts depends on the caller:
+
+| Caller | Roles they may create | Organization of the new user |
+|--------|-----------------------|------------------------------|
+| Superuser | `superuser`, `admin`, `user` | Any (`organization_id` as given, or none) |
+| Admin | `user` only | Their own organization only. Omitting `organization_id` defaults to the admin's organization; any other organization is rejected with `403`. Admins without an organization cannot create users. |
+| User | — | Users cannot create accounts (`403`). |
+| Unauthenticated | `user` only, and only when `ALLOW_UNAUTHENTICATED_REGISTRATION=true` | Always none: any `organization_id` in the request is ignored. An admin of the target organization must [add the account](organizations.md#add-a-user-to-an-organization) afterwards. |
+
+If an `Authorization` header is sent, the token must be valid: an invalid, expired, or revoked token returns `401` rather than being treated as an anonymous registration. A token belonging to a deactivated account returns `400`.
 
 ```bash
 curl -s -X POST http://localhost:8000/api/v1/users/ \
@@ -42,7 +51,7 @@ curl -s -X POST http://localhost:8000/api/v1/users/ \
 | `email` | Yes | — | Unique email address |
 | `password` | Yes | — | Must satisfy the [password policy](../security/authentication.md#password-policy) (12–72 bytes, not common, not containing the username/email) |
 | `role` | No | `user` | `superuser`, `admin`, or `user` |
-| `organization_id` | No | `null` | Assign to an organization on creation |
+| `organization_id` | No | `null` (admins: their own org) | Assign to an organization on creation (see the table above) |
 | `can_create_ca` | No | `false` | Allow creating CAs |
 | `can_create_cert` | No | `false` | Allow creating certificates |
 | `can_revoke_cert` | No | `false` | Allow revoking certificates |
@@ -74,7 +83,7 @@ curl -s http://localhost:8000/api/v1/users/2 \
   -H "Authorization: Bearer $TOKEN" | python -m json.tool
 ```
 
-Regular users can only view their own profile. Admins and superusers can view any user.
+Regular users can only view their own profile. Admins can view users in their own organization. Superusers can view any user.
 
 ## Update a User
 
@@ -87,6 +96,8 @@ curl -s -X PATCH http://localhost:8000/api/v1/users/2 \
     "can_export_private_key": true
   }' | python -m json.tool
 ```
+
+Admins can only update accounts in their own organization, and never superuser accounts. Regular users can only update themselves.
 
 | Field | Description | Who can change it |
 |-------|-------------|-------------------|

@@ -106,7 +106,11 @@ The following operations can be performed without a token:
 2. **`POST /api/v1/users/`** — create the first user (bootstrap only, by default)
 3. **`GET /crl/{slug}`** and **`GET /ca/{slug}.crt`** — public PKI endpoints (CRL and CA certificate downloads)
 
-By default, unauthenticated user registration is **disabled** after the first user is created. Set `ALLOW_UNAUTHENTICATED_REGISTRATION=true` to allow unauthenticated creation of regular user accounts. Superuser and admin accounts always require authentication.
+By default, unauthenticated user registration is **disabled** after the first user is created. Set `ALLOW_UNAUTHENTICATED_REGISTRATION=true` to allow unauthenticated creation of regular user accounts. Self-registered accounts are never placed in an organization (any `organization_id` in the request is ignored); an admin of the organization must add them. Superuser and admin accounts always require authentication.
+
+If a request to `POST /api/v1/users/` carries a bearer token, the token must be valid: an invalid, expired, or revoked token returns `401` instead of falling back to anonymous registration. Authenticated callers are authorized by role: superusers may create any account in any organization, admins may create `user` accounts in their own organization only, and regular users may not create accounts.
+
+When registration is not permitted, unauthenticated requests to `POST /api/v1/users/` are rejected with a generic `403` *before* the username/email uniqueness checks run, so the endpoint cannot be used to discover which accounts exist. Enabling `ALLOW_UNAUTHENTICATED_REGISTRATION` necessarily re-exposes "username/email already registered" errors to anonymous callers; only enable it when account names are not sensitive.
 
 All other API endpoints require a valid bearer token.
 

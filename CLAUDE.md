@@ -40,7 +40,7 @@ Consequence: there are no `[project.optional-dependencies]` extras. Use dependen
 **AuthN/AuthZ.**
 - JWT access (15 min) + refresh (24 h) tokens, `HS256`, validated in `deps.py::_validate_token`.
 - Token revocation works two ways: a JTI blocklist (`TokenService.is_token_blocklisted`) and a per-user `tokens_invalidated_at` cutoff that invalidates all tokens issued before it.
-- Authorization is centralized in `app/services/permission.py`. The hierarchy: superuser → resource creator → org admin → org read → per-user capability flags (`can_create_ca`, `can_create_cert`, `can_revoke_cert`, `can_export_private_key`, `can_delete_ca`). Roles: `SUPERUSER`, `ADMIN`, `USER`. **All reads/writes must be scoped to the caller's organization** (see commit `a975df5`).
+- Authorization is centralized in `app/services/permission.py`. The hierarchy: superuser → org admin → org read → per-user capability flags (`can_create_ca`, `can_create_cert`, `can_revoke_cert`, `can_export_private_key`, `can_delete_ca`). Roles: `SUPERUSER`, `ADMIN`, `USER`. Creator attribution (`created_by_user_id` / `created_by_service_account_id`) is audit-only and grants no access (#7). **All reads/writes must be scoped to the caller's organization** (see commit `a975df5`).
 
 **Encryption at rest.** Private keys are encrypted with a Fernet key from `PRIVATE_KEY_ENCRYPTION_KEY` via `app/services/encryption.py`. If unset, keys are stored plaintext (dev only).
 
