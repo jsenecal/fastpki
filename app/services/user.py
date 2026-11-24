@@ -14,8 +14,12 @@ UTC = ZoneInfo("UTC")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    # bcrypt only uses the first 72 bytes and bcrypt>=5 raises ValueError on
+    # longer input. Truncate (as bcrypt<5 did implicitly) so an over-long login
+    # attempt is a normal mismatch rather than a 500, and hashes created by
+    # older bcrypt from >72-byte passwords still verify.
     return bcrypt.checkpw(
-        plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+        plain_password.encode("utf-8")[:72], hashed_password.encode("utf-8")
     )
 
 

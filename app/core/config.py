@@ -60,6 +60,17 @@ class Settings(BaseSettings):
     # Rate limiting
     AUTH_RATE_LIMIT: str = "5/minute"
 
+    # Password policy: minimum length applied when a password is set or
+    # changed (see app/core/password_policy.py). Floor of 8 (NIST SP 800-63B);
+    # ceiling of 72 because bcrypt only hashes the first 72 bytes.
+    PASSWORD_MIN_LENGTH: int = 12
+
+    @field_validator("PASSWORD_MIN_LENGTH")
+    def validate_password_min_length(cls, v: int) -> int:  # noqa: N805
+        if not 8 <= v <= 72:
+            raise ValueError("PASSWORD_MIN_LENGTH must be between 8 and 72")  # noqa: TRY003
+        return v
+
     @field_validator("SECRET_KEY")
     def validate_secret_key(cls, v: str) -> str:  # noqa: N805
         if v == "supersecretkey":

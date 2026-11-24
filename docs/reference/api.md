@@ -106,7 +106,7 @@ A supplied bearer token must be valid: an invalid, expired, or revoked token ret
 |-------|------|----------|---------|-------------|
 | `username` | `string` | Yes | — | Unique username |
 | `email` | `string` | Yes | — | Unique email |
-| `password` | `string` | Yes | — | Min 8 characters |
+| `password` | `string` | Yes | — | Must satisfy the [password policy](../security/authentication.md#password-policy) |
 | `role` | `string` | No | `user` | `superuser`, `admin`, `user` |
 | `organization_id` | `int` | No | `null` | Organization to assign |
 | `can_create_ca` | `bool` | No | `false` | Capability flag |
@@ -117,7 +117,7 @@ A supplied bearer token must be valid: an invalid, expired, or revoked token ret
 
 **Response** `201`: User object.
 
-**Errors:** `400` — username/email already exists, or the caller's account is inactive. `401` — invalid bearer token. `403` — caller may not create users, may not create the requested role, may not create users in the requested organization, or unauthenticated registration is disabled.
+**Errors:** `400` — username/email already exists, or the caller's account is inactive. `401` — invalid bearer token. `403` — caller may not create users, may not create the requested role, may not create users in the requested organization, or unauthenticated registration is disabled. `422` — validation error, including password policy violations.
 
 !!! note "Anti-enumeration"
     Authentication, the registration policy, and role/organization authorization are all checked **before** username/email uniqueness. A caller who is not allowed to create the account always receives the same `403`, whether or not the supplied username or email exists. The `400` duplicate errors are only returned to callers who are permitted to create the account (superusers, admins within their own organization, or anyone when `ALLOW_UNAUTHENTICATED_REGISTRATION=true`).
@@ -171,7 +171,7 @@ Update a user.
 | `can_export_private_key` | `bool` | Admin (same org), Superuser |
 | `can_delete_ca` | `bool` | Admin (same org), Superuser |
 
-**Response** `200`: Updated user object. **Errors:** `403`, `404`.
+**Response** `200`: Updated user object. **Errors:** `403`, `404`, `422` (validation error, including a new `password` that violates the [password policy](../security/authentication.md#password-policy)).
 
 ### `DELETE /users/{user_id}`
 

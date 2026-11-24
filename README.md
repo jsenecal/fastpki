@@ -198,7 +198,7 @@ curl -X POST http://localhost:8000/api/v1/users/ \
   -d '{
     "username": "admin",
     "email": "admin@example.com",
-    "password": "securepassword",
+    "password": "tangerine-orbit-velvet-42",
     "role": "superuser"
   }'
 ```

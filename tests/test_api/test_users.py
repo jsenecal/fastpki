@@ -35,7 +35,7 @@ async def target_user(db: AsyncSession, test_org):
     return await user_service.create_user(
         username="usertarget",
         email="usertarget@example.com",
-        password="password123",
+        password="Pewter-Lagoon-3087",
         role=UserRole.USER,
         organization_id=test_org.id,
     )
@@ -47,7 +47,7 @@ async def test_create_user(client):
     user_data = {
         "username": "newuser",
         "email": "new@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
 
     response = await client.post("/api/v1/users/", json=user_data)
@@ -69,12 +69,13 @@ async def test_create_user_duplicate_username(client):
     superuser_data = {
         "username": "superdup",
         "email": "superdup@example.com",
-        "password": "superpass",
+        "password": "Orchid-Basalt-6214",
         "role": UserRole.SUPERUSER.value,
     }
     await client.post("/api/v1/users/", json=superuser_data)
     login_response = await client.post(
-        "/api/v1/auth/token", data={"username": "superdup", "password": "superpass"}
+        "/api/v1/auth/token",
+        data={"username": "superdup", "password": "Orchid-Basalt-6214"},
     )
     token = login_response.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
@@ -82,14 +83,14 @@ async def test_create_user_duplicate_username(client):
     user_data = {
         "username": "duplicate",
         "email": "dup1@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
     await client.post("/api/v1/users/", json=user_data, headers=headers)
 
     duplicate_data = {
         "username": "duplicate",
         "email": "dup2@example.com",
-        "password": "password456",
+        "password": "Lantern-Copper-9375",
     }
     response = await client.post("/api/v1/users/", json=duplicate_data, headers=headers)
 
@@ -104,13 +105,13 @@ async def test_create_user_duplicate_email(client):
     superuser_data = {
         "username": "superdupemail",
         "email": "superdupemail@example.com",
-        "password": "superpass",
+        "password": "Orchid-Basalt-6214",
         "role": UserRole.SUPERUSER.value,
     }
     await client.post("/api/v1/users/", json=superuser_data)
     login_response = await client.post(
         "/api/v1/auth/token",
-        data={"username": "superdupemail", "password": "superpass"},
+        data={"username": "superdupemail", "password": "Orchid-Basalt-6214"},
     )
     token = login_response.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
@@ -118,14 +119,14 @@ async def test_create_user_duplicate_email(client):
     user_data = {
         "username": "emailuser1",
         "email": "same@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
     await client.post("/api/v1/users/", json=user_data, headers=headers)
 
     duplicate_data = {
         "username": "emailuser2",
         "email": "same@example.com",
-        "password": "password456",
+        "password": "Lantern-Copper-9375",
     }
     response = await client.post("/api/v1/users/", json=duplicate_data, headers=headers)
 
@@ -145,7 +146,7 @@ async def test_unauthenticated_registration_does_not_leak_username_existence(cli
     superuser_data = {
         "username": "enumadmin",
         "email": "enumadmin@example.com",
-        "password": "superpass",
+        "password": "Orchid-Basalt-6214",
         "role": UserRole.SUPERUSER.value,
     }
     await client.post("/api/v1/users/", json=superuser_data)
@@ -156,7 +157,7 @@ async def test_unauthenticated_registration_does_not_leak_username_existence(cli
         json={
             "username": "enumadmin",
             "email": "attacker@example.com",
-            "password": "password123",
+            "password": "Pewter-Lagoon-3087",
         },
     )
     # Unauthenticated probe using a fresh username.
@@ -165,7 +166,7 @@ async def test_unauthenticated_registration_does_not_leak_username_existence(cli
         json={
             "username": "doesnotexist",
             "email": "fresh@example.com",
-            "password": "password123",
+            "password": "Pewter-Lagoon-3087",
         },
     )
 
@@ -181,7 +182,7 @@ async def test_unauthenticated_registration_does_not_leak_email_existence(client
     superuser_data = {
         "username": "emailenum",
         "email": "emailenum@example.com",
-        "password": "superpass",
+        "password": "Orchid-Basalt-6214",
         "role": UserRole.SUPERUSER.value,
     }
     await client.post("/api/v1/users/", json=superuser_data)
@@ -191,7 +192,7 @@ async def test_unauthenticated_registration_does_not_leak_email_existence(client
         json={
             "username": "freshname1",
             "email": "emailenum@example.com",
-            "password": "password123",
+            "password": "Pewter-Lagoon-3087",
         },
     )
     fresh_probe = await client.post(
@@ -199,7 +200,7 @@ async def test_unauthenticated_registration_does_not_leak_email_existence(client
         json={
             "username": "freshname2",
             "email": "neveruse@example.com",
-            "password": "password123",
+            "password": "Pewter-Lagoon-3087",
         },
     )
 
@@ -216,7 +217,7 @@ async def test_unauthenticated_elevated_role_probe_does_not_leak_existence(clien
         json={
             "username": "roleenum",
             "email": "roleenum@example.com",
-            "password": "superpass",
+            "password": "Orchid-Basalt-6214",
             "role": UserRole.SUPERUSER.value,
         },
     )
@@ -226,7 +227,7 @@ async def test_unauthenticated_elevated_role_probe_does_not_leak_existence(clien
         json={
             "username": "roleenum",
             "email": "roleenum@example.com",
-            "password": "password123",
+            "password": "Pewter-Lagoon-3087",
             "role": UserRole.ADMIN.value,
         },
     )
@@ -235,7 +236,7 @@ async def test_unauthenticated_elevated_role_probe_does_not_leak_existence(clien
         json={
             "username": "rolefresh",
             "email": "rolefresh@example.com",
-            "password": "password123",
+            "password": "Pewter-Lagoon-3087",
             "role": UserRole.ADMIN.value,
         },
     )
@@ -255,7 +256,7 @@ async def test_open_registration_still_reports_duplicates(client, monkeypatch):
         json={
             "username": "openfirst",
             "email": "openfirst@example.com",
-            "password": "superpass",
+            "password": "Orchid-Basalt-6214",
             "role": UserRole.SUPERUSER.value,
         },
     )
@@ -265,7 +266,7 @@ async def test_open_registration_still_reports_duplicates(client, monkeypatch):
         json={
             "username": "openfirst",
             "email": "other@example.com",
-            "password": "password123",
+            "password": "Pewter-Lagoon-3087",
         },
     )
     assert response.status_code == 400
@@ -278,7 +279,7 @@ async def test_get_users(client, db):
     superuser_data = {
         "username": "superadmin",
         "email": "super@example.com",
-        "password": "superpass",
+        "password": "Granite-Willow-5739",
         "role": UserRole.SUPERUSER.value,
     }
 
@@ -286,15 +287,28 @@ async def test_get_users(client, db):
 
     # Login as superuser
     login_response = await client.post(
-        "/api/v1/auth/token", data={"username": "superadmin", "password": "superpass"}
+        "/api/v1/auth/token",
+        data={"username": "superadmin", "password": "Granite-Willow-5739"},
     )
     token = login_response.json()["access_token"]
 
     # Create multiple users using the superuser token
     users_data = [
-        {"username": "user1", "email": "user1@example.com", "password": "password1"},
-        {"username": "user2", "email": "user2@example.com", "password": "password2"},
-        {"username": "user3", "email": "user3@example.com", "password": "password3"},
+        {
+            "username": "user1",
+            "email": "user1@example.com",
+            "password": "Juniper-Falcon-1111",
+        },
+        {
+            "username": "user2",
+            "email": "user2@example.com",
+            "password": "Juniper-Falcon-2222",
+        },
+        {
+            "username": "user3",
+            "email": "user3@example.com",
+            "password": "Juniper-Falcon-3333",
+        },
     ]
 
     headers = {"Authorization": f"Bearer {token}"}
@@ -324,7 +338,7 @@ async def test_get_user_by_id(client, db):
     superuser_data = {
         "username": "superget",
         "email": "superget@example.com",
-        "password": "superpass",
+        "password": "Granite-Willow-5739",
         "role": UserRole.SUPERUSER.value,
     }
 
@@ -332,7 +346,8 @@ async def test_get_user_by_id(client, db):
 
     # Login as superuser
     login_response = await client.post(
-        "/api/v1/auth/token", data={"username": "superget", "password": "superpass"}
+        "/api/v1/auth/token",
+        data={"username": "superget", "password": "Granite-Willow-5739"},
     )
     token = login_response.json()["access_token"]
 
@@ -340,7 +355,7 @@ async def test_get_user_by_id(client, db):
     user_data = {
         "username": "getbyid",
         "email": "getbyid@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
 
     headers = {"Authorization": f"Bearer {token}"}
@@ -366,7 +381,7 @@ async def test_update_user(client, db):
     superuser_data = {
         "username": "superupdate",
         "email": "superupdate@example.com",
-        "password": "superpass",
+        "password": "Granite-Willow-5739",
         "role": UserRole.SUPERUSER.value,
     }
 
@@ -374,7 +389,8 @@ async def test_update_user(client, db):
 
     # Login as superuser
     login_response = await client.post(
-        "/api/v1/auth/token", data={"username": "superupdate", "password": "superpass"}
+        "/api/v1/auth/token",
+        data={"username": "superupdate", "password": "Granite-Willow-5739"},
     )
     token = login_response.json()["access_token"]
 
@@ -382,7 +398,7 @@ async def test_update_user(client, db):
     user_data = {
         "username": "updateme",
         "email": "update@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
 
     headers = {"Authorization": f"Bearer {token}"}
@@ -418,7 +434,7 @@ async def test_delete_user(client, db):
     superuser_data = {
         "username": "superdelete",
         "email": "superdelete@example.com",
-        "password": "superpass",
+        "password": "Granite-Willow-5739",
         "role": UserRole.SUPERUSER.value,
     }
 
@@ -426,7 +442,8 @@ async def test_delete_user(client, db):
 
     # Login as superuser
     login_response = await client.post(
-        "/api/v1/auth/token", data={"username": "superdelete", "password": "superpass"}
+        "/api/v1/auth/token",
+        data={"username": "superdelete", "password": "Granite-Willow-5739"},
     )
     token = login_response.json()["access_token"]
 
@@ -434,7 +451,7 @@ async def test_delete_user(client, db):
     user_data = {
         "username": "deleteme",
         "email": "delete@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
 
     headers = {"Authorization": f"Bearer {token}"}
@@ -460,7 +477,7 @@ async def test_regular_user_cannot_access_other_users(client, db):
     superuser_data = {
         "username": "superaccess",
         "email": "superaccess@example.com",
-        "password": "superpass",
+        "password": "Granite-Willow-5739",
         "role": UserRole.SUPERUSER.value,
     }
 
@@ -468,7 +485,8 @@ async def test_regular_user_cannot_access_other_users(client, db):
 
     # Login as superuser
     login_response = await client.post(
-        "/api/v1/auth/token", data={"username": "superaccess", "password": "superpass"}
+        "/api/v1/auth/token",
+        data={"username": "superaccess", "password": "Granite-Willow-5739"},
     )
     super_token = login_response.json()["access_token"]
 
@@ -476,13 +494,13 @@ async def test_regular_user_cannot_access_other_users(client, db):
     user1_data = {
         "username": "user1access",
         "email": "user1@example.com",
-        "password": "password1",
+        "password": "Juniper-Falcon-1111",
     }
 
     user2_data = {
         "username": "user2access",
         "email": "user2@example.com",
-        "password": "password2",
+        "password": "Juniper-Falcon-2222",
     }
 
     # We'll use _ for unused response variable
@@ -496,7 +514,8 @@ async def test_regular_user_cannot_access_other_users(client, db):
 
     # Login as user1
     login_response = await client.post(
-        "/api/v1/auth/token", data={"username": "user1access", "password": "password1"}
+        "/api/v1/auth/token",
+        data={"username": "user1access", "password": "Juniper-Falcon-1111"},
     )
     token = login_response.json()["access_token"]
 
@@ -523,14 +542,14 @@ async def test_admin_cannot_read_user_in_other_organization(db: AsyncSession):
     admin_a = await user_service.create_user(
         username="admin_a_9",
         email="admin_a_9@example.com",
-        password="password123",
+        password="Pewter-Lagoon-3087",
         role=UserRole.ADMIN,
         organization_id=org_a.id,
     )
     user_b = await user_service.create_user(
         username="user_b_9",
         email="user_b_9@example.com",
-        password="password123",
+        password="Pewter-Lagoon-3087",
         role=UserRole.USER,
         organization_id=org_b.id,
     )
@@ -552,14 +571,14 @@ async def test_admin_can_read_user_in_own_organization(db: AsyncSession):
     admin_a = await user_service.create_user(
         username="admin_a_own_9",
         email="admin_a_own_9@example.com",
-        password="password123",
+        password="Pewter-Lagoon-3087",
         role=UserRole.ADMIN,
         organization_id=org_a.id,
     )
     user_a = await user_service.create_user(
         username="user_a_own_9",
         email="user_a_own_9@example.com",
-        password="password123",
+        password="Pewter-Lagoon-3087",
         role=UserRole.USER,
         organization_id=org_a.id,
     )
@@ -583,14 +602,14 @@ async def test_superuser_can_still_read_users_across_organizations(db: AsyncSess
     su = await user_service.create_user(
         username="su_9",
         email="su_9@example.com",
-        password="password123",
+        password="Pewter-Lagoon-3087",
         role=UserRole.SUPERUSER,
         organization_id=org_a.id,
     )
     user_b = await user_service.create_user(
         username="user_b_super_9",
         email="user_b_super_9@example.com",
-        password="password123",
+        password="Pewter-Lagoon-3087",
         role=UserRole.USER,
         organization_id=org_b.id,
     )
@@ -614,14 +633,14 @@ async def test_admin_without_organization_cannot_read_other_users(db: AsyncSessi
     orphan_admin = await user_service.create_user(
         username="orphan_admin_9",
         email="orphan_admin_9@example.com",
-        password="password123",
+        password="Pewter-Lagoon-3087",
         role=UserRole.ADMIN,
         organization_id=None,
     )
     user_b = await user_service.create_user(
         username="user_b_noorg_9",
         email="user_b_noorg_9@example.com",
-        password="password123",
+        password="Pewter-Lagoon-3087",
         role=UserRole.USER,
         organization_id=org_b.id,
     )
@@ -740,7 +759,7 @@ def _new_user_payload(name: str, **extra: object) -> dict[str, object]:
     return {
         "username": name,
         "email": f"{name}@example.com",
-        "password": "password123",
+        "password": "Pewter-Lagoon-3087",
         **extra,
     }
 
@@ -775,7 +794,7 @@ async def test_create_user_as_regular_user_does_not_leak_duplicates(
         json={
             "username": normal_user.username,
             "email": normal_user.email,
-            "password": "password123",
+            "password": "Pewter-Lagoon-3087",
         },
         headers=normal_user_token_headers,
     )
@@ -807,7 +826,7 @@ async def test_admin_cross_org_create_does_not_leak_duplicates(
         json={
             "username": superuser.username,
             "email": superuser.email,
-            "password": "password123",
+            "password": "Pewter-Lagoon-3087",
             "organization_id": org_b.id,
         },
         headers=admin_token_headers,
@@ -857,7 +876,7 @@ async def test_admin_without_org_cannot_create_users(client, db: AsyncSession):
     orphan = await UserService(db).create_user(
         username="orphanadmin69",
         email="orphanadmin69@example.com",
-        password="password123",
+        password="Pewter-Lagoon-3087",
         role=UserRole.ADMIN,
     )
     resp = await client.post(
@@ -928,7 +947,7 @@ async def test_inactive_caller_cannot_create_users(client, db: AsyncSession):
     inactive_su = await UserService(db).create_user(
         username="inactivesu69",
         email="inactivesu69@example.com",
-        password="password123",
+        password="Pewter-Lagoon-3087",
         role=UserRole.SUPERUSER,
     )
     # Flip the flag directly: update_user() would also invalidate tokens (401),
@@ -968,7 +987,7 @@ async def test_admin_cannot_update_user_in_other_org(
     victim = await UserService(db).create_user(
         username="victim69",
         email="victim69@example.com",
-        password="password123",
+        password="Pewter-Lagoon-3087",
         organization_id=org_b.id,
     )
     transport = ASGITransport(app=_app_for(admin_user))
@@ -985,7 +1004,7 @@ async def test_admin_cannot_update_superuser(setup_db, admin_user, db: AsyncSess
     su = await UserService(db).create_user(
         username="su_in_org69",
         email="su_in_org69@example.com",
-        password="password123",
+        password="Pewter-Lagoon-3087",
         role=UserRole.SUPERUSER,
         organization_id=admin_user.organization_id,
     )

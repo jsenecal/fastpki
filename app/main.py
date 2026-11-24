@@ -2,8 +2,11 @@ import asyncio
 import contextlib
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import Depends, FastAPI
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -20,6 +23,43 @@ from app.api.pki import ca_router, crl_router
 from app.core.config import logger, settings
 from app.db.session import create_db_and_tables, get_session
 from app.services.encryption import encrypt_existing_keys
+
+# Request fields whose values must never be echoed back in a 422 response.
+_SENSITIVE_FIELDS = frozenset({"password", "refresh_token"})
+_REDACTED = "[redacted]"
+
+
+def _redact(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            k: _REDACTED if k in _SENSITIVE_FIELDS else _redact(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact(v) for v in value]
+    return value
+
+
+async def _redacting_validation_handler(
+    request: StarletteRequest, exc: Exception
+) -> Response:
+    """FastAPI's default 422 handler, minus sensitive values in ``input``.
+
+    Pydantic echoes the offending value (or, for missing fields, the whole
+    request body) in each error's ``input``; that would leak passwords.
+    """
+    assert isinstance(exc, RequestValidationError)
+    errors = []
+    for err in exc.errors():
+        err = dict(err)
+        if "input" in err:
+            loc: tuple[Any, ...] = tuple(err.get("loc") or ())
+            sensitive = bool(loc) and loc[-1] in _SENSITIVE_FIELDS
+            err["input"] = _REDACTED if sensitive else _redact(err["input"])
+        errors.append(err)
+    return await request_validation_exception_handler(
+        request, RequestValidationError(errors)
+    )
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -91,6 +131,9 @@ def create_app(enable_docs: bool | None = None) -> FastAPI:
     application.state.limiter = limiter
     application.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
     application.add_middleware(SlowAPIMiddleware)
+    application.add_exception_handler(
+        RequestValidationError, _redacting_validation_handler
+    )
 
     if settings.BACKEND_CORS_ORIGINS:
         application.add_middleware(
