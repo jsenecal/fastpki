@@ -153,7 +153,7 @@ async def test_org_admin_cannot_pull_user_from_other_org(
         f"{admin_user.organization_id}/users/{other_org_member.id}"
     )
 
-    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 @pytest.mark.asyncio
@@ -167,4 +167,4 @@ async def test_org_admin_cannot_add_superuser_to_own_org(
         f"{admin_user.organization_id}/users/{superuser.id}"
     )
 
-    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.status_code == status.HTTP_404_NOT_FOUND

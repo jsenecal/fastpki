@@ -149,9 +149,12 @@ Get the current authenticated user.
 
 Get a user by ID.
 
-- **Auth required:** Self, Admin, or Superuser
+- **Auth required:** Self, Admin (users in the same org), or Superuser
 
-**Response** `200`: User object. **Errors:** `403`, `404`.
+**Response** `200`: User object. **Errors:** `404` — the user does not exist, or the caller may not see it.
+
+!!! note "No user-ID enumeration"
+    Endpoints that take a `user_id` answer `404 User not found` both for an ID that does not exist and for an account outside the caller's visibility (another organization, or anyone but themselves for a regular user). Only accounts the caller can already see may produce a `403`.
 
 ### `PATCH /users/{user_id}`
 
@@ -173,7 +176,7 @@ Update a user.
 | `can_export_private_key` | `bool` | Admin (same org), Superuser |
 | `can_delete_ca` | `bool` | Admin (same org), Superuser |
 
-**Response** `200`: Updated user object. **Errors:** `403`, `404`, `422` (validation error, including a new `password` that violates the [password policy](../security/authentication.md#password-policy)).
+**Response** `200`: Updated user object. **Errors:** `403` — the caller can see the account but may not make this change. `404` — the user does not exist, or the caller may not see it. `422` (validation error, including a new `password` that violates the [password policy](../security/authentication.md#password-policy)).
 
 ### `DELETE /users/{user_id}`
 
@@ -247,7 +250,7 @@ Add a user to an organization.
 
 - **Auth required:** Admin in the organization (only for users not in any organization, and never superusers), or Superuser
 
-**Response** `200`: Updated user object. **Errors:** `403`, `404`.
+**Response** `200`: Updated user object. **Errors:** `403` — an admin targeting another organization (checked before the user is looked up). `404` — the user does not exist, belongs to another organization, or is a superuser (for admins); or the organization does not exist (superusers).
 
 ### `DELETE /organizations/{organization_id}/users/{user_id}`
 
@@ -255,7 +258,7 @@ Remove a user from an organization.
 
 - **Auth required:** Admin in the organization, or Superuser
 
-**Response** `200`: Updated user object. **Errors:** `403`, `404`.
+**Response** `200`: Updated user object. **Errors:** `403` — an admin targeting another organization (checked before the user is looked up). `404` — the user does not exist or is not in the admin's organization; or the organization does not exist (superusers).
 
 ### `GET /organizations/{organization_id}/users`
 

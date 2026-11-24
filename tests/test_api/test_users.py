@@ -523,8 +523,8 @@ async def test_regular_user_cannot_access_other_users(client, db):
     headers = {"Authorization": f"Bearer {token}"}
     response = await client.get(f"/api/v1/users/{user2_id}", headers=headers)
 
-    # Should be forbidden
-    assert response.status_code == 403
+    # Out of scope looks the same as missing (no user-ID enumeration)
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -558,7 +558,7 @@ async def test_admin_cannot_read_user_in_other_organization(db: AsyncSession):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         resp = await c.get(f"{settings.API_V1_STR}/users/{user_b.id}")
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -649,7 +649,7 @@ async def test_admin_without_organization_cannot_read_other_users(db: AsyncSessi
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         resp = await c.get(f"{settings.API_V1_STR}/users/{user_b.id}")
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -996,7 +996,7 @@ async def test_admin_cannot_update_user_in_other_org(
             f"{settings.API_V1_STR}/users/{victim.id}",
             json={"password": "hijacked-password"},
         )
-    assert resp.status_code == 403
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio

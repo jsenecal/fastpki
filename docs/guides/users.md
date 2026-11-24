@@ -83,7 +83,7 @@ curl -s http://localhost:8000/api/v1/users/2 \
   -H "Authorization: Bearer $TOKEN" | python -m json.tool
 ```
 
-Regular users can only view their own profile. Admins can view users in their own organization. Superusers can view any user.
+Regular users can only view their own profile. Admins can view users in their own organization. Superusers can view any user. An account the caller may not see returns `404 User not found`, exactly like an ID that does not exist, so user IDs cannot be probed across organizations.
 
 ## Update a User
 
@@ -97,7 +97,7 @@ curl -s -X PATCH http://localhost:8000/api/v1/users/2 \
   }' | python -m json.tool
 ```
 
-Admins can only update accounts in their own organization, and never superuser accounts. Regular users can only update themselves.
+Admins can only update accounts in their own organization, and never superuser accounts. Regular users can only update themselves. Targeting an account you cannot see returns `404`; an account you can see but may not change returns `403`.
 
 | Field | Description | Who can change it |
 |-------|-------------|-------------------|

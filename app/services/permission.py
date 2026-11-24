@@ -128,6 +128,33 @@ class PermissionService:
         return organization_id
 
     @staticmethod
+    def can_view_user(
+        actor: User, target: User, *, include_unassigned: bool = False
+    ) -> bool:
+        """Whether ``actor`` may know that ``target`` exists.
+
+        Superusers see everyone and every user sees themselves. An ADMIN sees
+        the accounts in their own organization. With ``include_unassigned``
+        (adding members to an organization), an ADMIN with an organization
+        also sees non-superuser accounts that belong to no organization.
+
+        Endpoints answer ``404`` for an account the caller cannot view, the
+        same as for a missing one, so user IDs cannot be enumerated across
+        organizations.
+        """
+        if actor.role == UserRole.SUPERUSER or actor.id == target.id:
+            return True
+        if actor.role != UserRole.ADMIN or actor.organization_id is None:
+            return False
+        if target.organization_id == actor.organization_id:
+            return True
+        return (
+            include_unassigned
+            and target.organization_id is None
+            and target.role != UserRole.SUPERUSER
+        )
+
+    @staticmethod
     def can_manage_user(actor: User, target: User) -> bool:
         """Whether ``actor`` may modify ``target``'s account.
 
