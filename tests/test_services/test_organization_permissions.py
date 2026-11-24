@@ -204,3 +204,44 @@ async def test_organization_admin_permissions(db):
     # Verify user was removed
     updated_user = await user_service.get_user_by_id(user.id)
     assert updated_user.organization_id is None
+
+
+@pytest.mark.asyncio
+async def test_org_admin_membership_limited_to_user_role_and_self(db):
+    """An org admin may add/remove USER-role accounts and themselves, but not
+    peer admins: that takes a superuser."""
+    user_service = UserService(db)
+    org_service = OrganizationService(db)
+    org = await org_service.create_organization(name="PeerAdminOrg")
+
+    admin = await user_service.create_user(
+        username="peer_rule_admin",
+        email="peer_rule_admin@example.com",
+        password="password123",
+        role=UserRole.ADMIN,
+        organization_id=org.id,
+    )
+    peer = await user_service.create_user(
+        username="peer_rule_other",
+        email="peer_rule_other@example.com",
+        password="password123",
+        role=UserRole.ADMIN,
+        organization_id=org.id,
+    )
+    loose_admin = await user_service.create_user(
+        username="peer_rule_loose",
+        email="peer_rule_loose@example.com",
+        password="password123",
+        role=UserRole.ADMIN,
+    )
+
+    can_add = org_service.user_can_add_user_to_organization
+    can_remove = org_service.user_can_remove_user_from_organization
+
+    assert await can_add(admin.id, org.id, admin.id) is True
+    assert await can_add(admin.id, org.id, peer.id) is False
+    assert await can_add(admin.id, org.id, loose_admin.id) is False
+    assert await can_add(admin.id, org.id, 99999) is False
+
+    assert await can_remove(admin.id, peer.id) is False
+    assert await can_remove(admin.id, admin.id) is True

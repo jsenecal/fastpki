@@ -29,6 +29,25 @@ oauth2_scheme_optional = OAuth2PasswordBearer(
 
 router = APIRouter()
 
+_USER_NOT_FOUND = "User not found"
+
+
+async def _get_visible_user(
+    user_service: UserService, user_id: int, current_user: User
+) -> User:
+    """Load a user the caller may see, else 404.
+
+    Accounts outside the caller's visibility (other organizations, or anyone
+    but themselves for a regular user) are reported as not found so user IDs
+    cannot be enumerated across organizations.
+    """
+    user = await user_service.get_user_by_id(user_id)
+    if user is None or not PermissionService.can_view_user(current_user, user):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=_USER_NOT_FOUND
+        )
+    return user
+
 
 @router.post("/", response_model=UserSchema, status_code=status.HTTP_201_CREATED)
 async def create_user(
@@ -50,6 +69,13 @@ async def create_user(
     result = await db.execute(select(User).limit(1))
     first_user = result.scalar_one_or_none() is None
     role = user_in.role or UserRole.USER
+    capabilities = {
+        "can_create_ca": user_in.can_create_ca,
+        "can_create_cert": user_in.can_create_cert,
+        "can_revoke_cert": user_in.can_revoke_cert,
+        "can_export_private_key": user_in.can_export_private_key,
+        "can_delete_ca": user_in.can_delete_ca,
+    }
 
     # Authorization (role + organization scoping, issue #69) runs before the
     # uniqueness checks below so callers who may not create the account cannot
@@ -61,6 +87,7 @@ async def create_user(
             user_in.organization_id,
             is_first_user=first_user,
             allow_unauthenticated_registration=settings.ALLOW_UNAUTHENTICATED_REGISTRATION,
+            grants_capabilities=any(capabilities.values()),
         )
     except PermissionDeniedError as e:
         logger.info("Create user failed: %s", e)
@@ -89,6 +116,7 @@ async def create_user(
         password=user_in.password,
         role=role,
         organization_id=organization_id,
+        **capabilities,
     )
 
     audit_service = AuditService(db)
@@ -145,37 +173,7 @@ async def read_user_by_id(
     """
     Get a specific user by id.
     """
-    user_service = UserService(db)
-    user = await user_service.get_user_by_id(user_id)
-
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-
-    # Organization-scoped visibility (issue #9):
-    # - SUPERUSER: any user across all orgs.
-    # - ADMIN: only users within their own organization (and they must have one).
-    # - USER: only their own profile.
-    is_self = current_user.id == user_id
-    if current_user.role == UserRole.SUPERUSER:
-        pass
-    elif (
-        current_user.role == UserRole.ADMIN and current_user.organization_id is not None
-    ):
-        if user.organization_id != current_user.organization_id and not is_self:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not enough permissions",
-            )
-    elif not is_self:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions",
-        )
-
-    return user
+    return await _get_visible_user(UserService(db), user_id, current_user)
 
 
 @router.patch("/{user_id}", response_model=UserSchema)
@@ -189,13 +187,7 @@ async def update_user(
     Update a user.
     """
     user_service = UserService(db)
-    user = await user_service.get_user_by_id(user_id)
-
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+    user = await _get_visible_user(user_service, user_id, current_user)
 
     # Users manage themselves; ADMINs manage non-superusers in their own
     # organization only; SUPERUSERs manage everyone (issue #69).
