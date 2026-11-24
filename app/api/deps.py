@@ -61,7 +61,7 @@ async def _validate_token(db: AsyncSession, token: str) -> tuple[User, TokenPayl
 
 
 async def get_current_user(
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     token: str = Depends(oauth2_scheme),
 ) -> User:
     """Validate access token and return current user."""
@@ -70,7 +70,7 @@ async def get_current_user(
 
 
 async def get_current_user_with_payload(
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     token: str = Depends(oauth2_scheme),
 ) -> tuple[User, TokenPayload]:
     """Validate access token and return current user with parsed payload."""
@@ -87,7 +87,7 @@ async def get_current_active_user(
 
 
 async def get_current_principal(
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     token: str = Depends(oauth2_scheme),
 ) -> Principal:
     """Resolve a bearer token to a Principal — a user or a service account.
@@ -105,6 +105,9 @@ async def get_current_principal(
                 detail="Could not validate credentials",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        # Persist last_used_at now so token use is recorded even when the
+        # endpoint later fails and its unit of work rolls back.
+        await db.commit()
         return Principal.from_service_account(sa)
 
     user, _payload = await _validate_token(db, token)

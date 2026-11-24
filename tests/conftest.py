@@ -1,8 +1,9 @@
 import asyncio
 import logging
 import os
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 from datetime import timedelta
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -22,7 +23,7 @@ from app.api.deps import (
 )
 from app.core.config import logger, settings
 from app.db.models import User, UserRole
-from app.db.session import get_session
+from app.db.session import get_session, unit_of_work
 from app.services.organization import OrganizationService
 from app.services.principal import Principal
 from app.services.user import UserService
@@ -48,7 +49,8 @@ test_session_maker = async_sessionmaker(
 
 
 async def get_test_session() -> AsyncGenerator[AsyncSession, None]:
-    async with test_session_maker() as session:
+    # Mirror the production unit of work: commit on success, roll back on error.
+    async with unit_of_work(test_session_maker) as session:
         yield session
 
 
@@ -101,9 +103,30 @@ async def setup_db():
         os.remove("./test.db")
 
 
+class ArrangeSession(AsyncSession):
+    """Test-arrangement session that commits whenever a service flushes.
+
+    Services no longer commit; in production the request unit of work does
+    (issue #55). Tests that arrange data by calling services directly on the
+    ``db`` fixture act as that caller: committing on each flush makes the data
+    visible to the separate sessions the API under test opens, and keeps
+    SQLite from being left write-locked. Atomicity itself is exercised through
+    the API in ``tests/test_api/test_transaction_atomicity.py``.
+    """
+
+    async def flush(self, objects: Sequence[Any] | None = None) -> None:
+        await super().flush(objects)
+        await self.commit()
+
+
+arrange_session_maker = async_sessionmaker(
+    test_engine, class_=ArrangeSession, expire_on_commit=False
+)
+
+
 @pytest_asyncio.fixture
 async def db(setup_db) -> AsyncGenerator[AsyncSession, None]:
-    async with test_session_maker() as session:
+    async with arrange_session_maker() as session:
         try:
             yield session
         finally:

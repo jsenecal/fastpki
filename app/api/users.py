@@ -33,7 +33,7 @@ router = APIRouter()
 @router.post("/", response_model=UserSchema, status_code=status.HTTP_201_CREATED)
 async def create_user(
     user_in: UserCreate,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     token: str | None = Depends(oauth2_scheme_optional),
 ) -> Any:
     logger.debug("Create user request for username: %s", user_in.username)
@@ -115,7 +115,7 @@ async def create_user(
 async def read_users(
     skip: int = 0,
     limit: int = 100,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     current_user: User = Depends(get_current_active_superuser),  # noqa: B008
 ) -> Any:
     """
@@ -139,7 +139,7 @@ async def read_user_me(
 @router.get("/{user_id}", response_model=UserSchema)
 async def read_user_by_id(
     user_id: int,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     current_user: User = Depends(get_current_active_user),  # noqa: B008
 ) -> Any:
     """
@@ -182,7 +182,7 @@ async def read_user_by_id(
 async def update_user(
     user_id: int,
     user_in: UserUpdate,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     current_user: User = Depends(get_current_active_user),  # noqa: B008
 ) -> Any:
     """
@@ -311,7 +311,7 @@ async def update_user(
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
     user_id: int,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     current_user: User = Depends(get_current_active_superuser),  # noqa: B008
 ) -> None:
     """

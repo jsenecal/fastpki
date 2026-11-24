@@ -68,7 +68,7 @@ class ServiceAccountService:
             can_delete_ca=can_delete_ca,
         )
         self.db.add(sa)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(sa)
         return sa
 
@@ -106,7 +106,7 @@ class ServiceAccountService:
         sa = await self._get_or_raise(sa_id)
         sa.disabled_at = datetime.now(UTC) if disabled else None
         self.db.add(sa)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(sa)
         return sa
 
@@ -148,7 +148,7 @@ class ServiceAccountService:
             sa.can_delete_ca = can_delete_ca
 
         self.db.add(sa)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(sa)
         return sa
 
@@ -161,7 +161,7 @@ class ServiceAccountService:
             )
         )
         await self.db.delete(sa)
-        await self.db.commit()
+        await self.db.flush()
 
     async def _get_or_raise(self, sa_id: int) -> ServiceAccount:
         sa = await self.get_service_account_by_id(sa_id)
@@ -197,7 +197,7 @@ class ServiceAccountService:
             expires_at=expires_at,
         )
         self.db.add(token)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(token)
 
         plaintext = f"{TOKEN_PREFIX}{public_id}.{secret}"
@@ -226,7 +226,7 @@ class ServiceAccountService:
             raise NotFoundError(_TOKEN_NOT_FOUND)
         token.revoked = True
         self.db.add(token)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(token)
         return token
 
@@ -270,5 +270,5 @@ class ServiceAccountService:
 
         token.last_used_at = datetime.now(UTC)
         self.db.add(token)
-        await self.db.commit()
+        await self.db.flush()
         return sa

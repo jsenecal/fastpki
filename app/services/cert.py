@@ -345,7 +345,7 @@ class CertificateService:
         )
 
         self.db.add(cert)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(cert)
 
         return cert
@@ -678,7 +678,7 @@ class CertificateService:
         )
 
         self.db.add(crl_entry)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(cert)
 
         return cert

@@ -22,7 +22,7 @@ async def list_audit_logs(
     until: datetime | None = Query(None),  # noqa: B008
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     current_user: User = Depends(get_current_active_user),  # noqa: B008
 ) -> list[AuditLogResponse]:
     if current_user.role == UserRole.USER:

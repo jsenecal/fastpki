@@ -44,8 +44,11 @@ class AuditService:
             service_account_id=service_account_id,
             service_account_name=service_account_name,
         )
+        # No commit: the caller's unit of work commits the audit row together
+        # with the mutation it records (fail-closed audit, #55). Flushing here
+        # surfaces an insert failure inside the request, before the response.
         self.db.add(entry)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(entry)
         return entry
 

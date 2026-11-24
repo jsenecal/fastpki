@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -23,12 +24,17 @@ class TokenService:
         self.db = db
 
     async def blocklist_token(self, jti: str, exp: datetime) -> None:
-        entry = BlocklistedToken(jti=jti, exp=exp)
-        self.db.add(entry)
-        try:
-            await self.db.commit()
-        except IntegrityError:
-            await self.db.rollback()
+        # INSERT ... ON CONFLICT DO NOTHING: blocklisting is idempotent, and a
+        # duplicate JTI must not raise and poison the caller's transaction
+        # (the unit of work commits it). Both supported dialects (SQLite and
+        # PostgreSQL) share this construct.
+        dialect = self.db.get_bind().dialect.name
+        insert_fn = pg_insert if dialect == "postgresql" else sqlite_insert
+        await self.db.execute(
+            insert_fn(BlocklistedToken)
+            .values(jti=jti, exp=exp)
+            .on_conflict_do_nothing(index_elements=["jti"])
+        )
 
     async def is_token_blocklisted(self, jti: str) -> bool:
         result = await self.db.execute(
@@ -47,7 +53,7 @@ class TokenService:
             expires_at=expires_at,
         )
         self.db.add(token)
-        await self.db.commit()
+        await self.db.flush()
         return token_str
 
     async def validate_refresh_token(self, token: str) -> RefreshToken | None:
@@ -62,7 +68,7 @@ class TokenService:
         return result.scalar_one_or_none()
 
     async def validate_and_revoke_refresh_token(
-        self, token: str, *, commit: bool = True
+        self, token: str
     ) -> RefreshToken | None:
         """Atomically validate and revoke a refresh token via single UPDATE."""
         now = datetime.now(UTC)
@@ -76,10 +82,7 @@ class TokenService:
             .values(revoked=True)
             .returning(RefreshToken)
         )
-        refresh_token = result.scalar_one_or_none()
-        if commit:
-            await self.db.commit()
-        return refresh_token
+        return result.scalar_one_or_none()
 
     async def revoke_refresh_token(self, token: str) -> None:
         result = await self.db.execute(
@@ -89,11 +92,9 @@ class TokenService:
         if refresh_token is not None:
             refresh_token.revoked = True
             self.db.add(refresh_token)
-            await self.db.commit()
+            await self.db.flush()
 
-    async def revoke_all_user_refresh_tokens(
-        self, user_id: int, *, commit: bool = True
-    ) -> None:
+    async def revoke_all_user_refresh_tokens(self, user_id: int) -> None:
         await self.db.execute(
             update(RefreshToken)
             .where(
@@ -102,8 +103,6 @@ class TokenService:
             )
             .values(revoked=True)
         )
-        if commit:
-            await self.db.commit()
 
     async def cleanup_expired_tokens(self) -> int:
         now = datetime.now(UTC)
@@ -122,5 +121,4 @@ class TokenService:
         )
         rt_count: int = rt_result.rowcount  # type: ignore[attr-defined]
 
-        await self.db.commit()
         return bl_count + rt_count

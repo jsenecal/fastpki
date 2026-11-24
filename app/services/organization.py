@@ -37,7 +37,7 @@ class OrganizationService:
         )
 
         self.db.add(org)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(org)
         return org
 
@@ -80,7 +80,7 @@ class OrganizationService:
             org.description = description
 
         self.db.add(org)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(org)
         return org
 
@@ -95,7 +95,7 @@ class OrganizationService:
             raise HasDependentsError(_HAS_USERS)
 
         await self.db.delete(org)
-        await self.db.commit()
+        await self.db.flush()
         return True
 
     async def add_user_to_organization(
@@ -123,7 +123,7 @@ class OrganizationService:
         user.organization_id = org_id
 
         self.db.add(user)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(user)
         return user
 
@@ -151,7 +151,7 @@ class OrganizationService:
         user.organization_id = None
 
         self.db.add(user)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(user)
         return user
 

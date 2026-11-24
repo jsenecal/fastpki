@@ -90,6 +90,30 @@ async def test_blocklist_token(db: AsyncSession):
     assert await token_service.is_token_blocklisted("nonexistent-jti") is False
 
 
+async def test_blocklist_token_is_idempotent(db: AsyncSession):
+    """A duplicate JTI is ignored without poisoning the caller's transaction."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from sqlalchemy import func
+    from sqlmodel import select
+
+    token_service = TokenService(db)
+    exp = datetime.now(ZoneInfo("UTC"))
+    await token_service.blocklist_token(jti="dup-jti", exp=exp)
+    await token_service.blocklist_token(jti="dup-jti", exp=exp)
+
+    count = await db.execute(
+        select(func.count())
+        .select_from(BlocklistedToken)
+        .where(BlocklistedToken.jti == "dup-jti")
+    )
+    assert count.scalar_one() == 1
+    # The session is still usable after the conflict.
+    await db.commit()
+    assert await token_service.is_token_blocklisted("dup-jti") is True
+
+
 async def test_create_and_validate_refresh_token(db: AsyncSession, test_user):
     token_service = TokenService(db)
     refresh_token = await token_service.create_refresh_token(user_id=test_user.id)
@@ -240,6 +264,8 @@ async def test_token_gc_loop_runs_cleanup():
             await token_gc_loop()
 
     mock_token_service.cleanup_expired_tokens.assert_called_once()
+    # Services no longer commit; the GC loop's unit of work must (issue #55).
+    mock_session.commit.assert_awaited_once()
 
 
 async def test_access_token_contains_jti_and_iat(db: AsyncSession):

@@ -2,6 +2,12 @@
 
 FastPKI maintains an immutable audit log for every security-sensitive action. Audit log entries are append-only — they cannot be modified or deleted through the API.
 
+## Delivery Guarantee
+
+Auditing is **fail-closed**. An audited action and its audit entry are written in the same database transaction, committed once before the response is sent: either both are stored or neither is. If the audit entry cannot be written, the action is rolled back and the client receives an error (HTTP 500), so a retry starts from a clean state. A success response therefore always means the audit entry exists. Audited reads, such as private key exports, also return the key only after their audit entry has been committed.
+
+Failure events (`login_failure`) are committed before the error response is returned, so they are recorded even though the request itself fails.
+
 ## Query Audit Logs
 
 ```bash
