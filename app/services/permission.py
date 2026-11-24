@@ -19,6 +19,7 @@ CAPABILITY_MAP: dict[PermissionAction, str] = {
 }
 
 ELEVATED_ROLE_DENIED = "Not enough permissions to create admin or superuser accounts"
+CAPABILITIES_DENIED = "Not enough permissions to set capabilities"
 
 
 def _as_principal(actor: Principal | User) -> Principal:
@@ -72,6 +73,7 @@ class PermissionService:
         *,
         is_first_user: bool,
         allow_unauthenticated_registration: bool,
+        grants_capabilities: bool,
     ) -> int | None:
         """Decide whether ``actor`` may create a user and return its org.
 
@@ -79,9 +81,14 @@ class PermissionService:
         ``PermissionDeniedError``. This is a pure decision with no DB access
         so it can run before any uniqueness lookup (issue #8 ordering).
 
+        ``grants_capabilities`` is true when the request sets any capability
+        flag. Callers allowed to create the account (superusers, and admins
+        in their own organization) may set flags; anonymous callers may not.
+
         - First user in the system: bootstrap, any role, org as requested.
         - Anonymous: USER role only, only when open registration is enabled,
-          and never into an organization (an org admin must add them).
+          never with capability flags, and never into an organization (an org
+          admin must add them).
         - SUPERUSER: any role, any organization.
         - ADMIN: USER role only, only in their own organization (defaulting
           to it when none is requested).
@@ -97,6 +104,8 @@ class PermissionService:
                 raise PermissionDeniedError(ELEVATED_ROLE_DENIED)
             if not allow_unauthenticated_registration:
                 raise PermissionDeniedError("Unauthenticated registration is disabled")  # noqa: TRY003
+            if grants_capabilities:
+                raise PermissionDeniedError(CAPABILITIES_DENIED)
             return None
 
         if actor.role == UserRole.SUPERUSER:
@@ -119,11 +128,40 @@ class PermissionService:
         return organization_id
 
     @staticmethod
+    def can_view_user(
+        actor: User, target: User, *, include_unassigned: bool = False
+    ) -> bool:
+        """Whether ``actor`` may know that ``target`` exists.
+
+        Superusers see everyone and every user sees themselves. An ADMIN sees
+        the accounts in their own organization. With ``include_unassigned``
+        (adding members to an organization), an ADMIN with an organization
+        also sees non-superuser accounts that belong to no organization.
+
+        Endpoints answer ``404`` for an account the caller cannot view, the
+        same as for a missing one, so user IDs cannot be enumerated across
+        organizations.
+        """
+        if actor.role == UserRole.SUPERUSER or actor.id == target.id:
+            return True
+        if actor.role != UserRole.ADMIN or actor.organization_id is None:
+            return False
+        if target.organization_id == actor.organization_id:
+            return True
+        return (
+            include_unassigned
+            and target.organization_id is None
+            and target.role != UserRole.SUPERUSER
+        )
+
+    @staticmethod
     def can_manage_user(actor: User, target: User) -> bool:
         """Whether ``actor`` may modify ``target``'s account.
 
         Superusers manage everyone and every user manages themselves. An
-        ADMIN manages non-superuser accounts in their own organization only.
+        ADMIN manages USER-role accounts in their own organization only;
+        peer ADMIN accounts require a superuser, so one org admin cannot
+        take over another's account.
         """
         if actor.role == UserRole.SUPERUSER or actor.id == target.id:
             return True
@@ -131,7 +169,7 @@ class PermissionService:
             actor.role == UserRole.ADMIN
             and actor.organization_id is not None
             and target.organization_id == actor.organization_id
-            and target.role != UserRole.SUPERUSER
+            and target.role == UserRole.USER
         )
 
     @staticmethod

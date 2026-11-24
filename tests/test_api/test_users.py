@@ -523,8 +523,8 @@ async def test_regular_user_cannot_access_other_users(client, db):
     headers = {"Authorization": f"Bearer {token}"}
     response = await client.get(f"/api/v1/users/{user2_id}", headers=headers)
 
-    # Should be forbidden
-    assert response.status_code == 403
+    # Out of scope looks the same as missing (no user-ID enumeration)
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -558,7 +558,7 @@ async def test_admin_cannot_read_user_in_other_organization(db: AsyncSession):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         resp = await c.get(f"{settings.API_V1_STR}/users/{user_b.id}")
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -649,7 +649,7 @@ async def test_admin_without_organization_cannot_read_other_users(db: AsyncSessi
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         resp = await c.get(f"{settings.API_V1_STR}/users/{user_b.id}")
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -996,7 +996,7 @@ async def test_admin_cannot_update_user_in_other_org(
             f"{settings.API_V1_STR}/users/{victim.id}",
             json={"password": "hijacked-password"},
         )
-    assert resp.status_code == 403
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -1039,3 +1039,185 @@ async def test_admin_can_update_user_in_own_org(setup_db, admin_user, target_use
         )
     assert resp.status_code == 200, resp.text
     assert resp.json()["email"] == "changed69@example.com"
+
+
+# ---------------------------------------------------------------------------
+# Capability flags on POST /users/ must be honored for privileged callers and
+# refused (not silently dropped) for anonymous self-registration.
+# ---------------------------------------------------------------------------
+
+ALL_CAPABILITIES = {
+    "can_create_ca": True,
+    "can_create_cert": True,
+    "can_revoke_cert": True,
+    "can_export_private_key": True,
+    "can_delete_ca": True,
+}
+
+
+@pytest.mark.asyncio
+async def test_superuser_create_user_persists_capabilities(
+    client, superuser_token_headers, db: AsyncSession
+):
+    resp = await client.post(
+        USERS_URL,
+        json=_new_user_payload("capsbysu", **ALL_CAPABILITIES),
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    for flag in ALL_CAPABILITIES:
+        assert body[flag] is True, flag
+    stored = await UserService(db).get_user_by_id(body["id"])
+    assert stored is not None
+    await db.refresh(stored)
+    assert stored.can_create_ca
+    assert stored.can_delete_ca
+
+
+@pytest.mark.asyncio
+async def test_admin_create_user_in_own_org_persists_capabilities(
+    client, admin_token_headers, test_org
+):
+    resp = await client.post(
+        USERS_URL,
+        json=_new_user_payload(
+            "capsbyadmin", can_create_cert=True, can_revoke_cert=True
+        ),
+        headers=admin_token_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["organization_id"] == test_org.id
+    assert body["can_create_cert"] is True
+    assert body["can_revoke_cert"] is True
+    assert body["can_create_ca"] is False
+    assert body["can_export_private_key"] is False
+    assert body["can_delete_ca"] is False
+
+
+@pytest.mark.asyncio
+async def test_first_user_bootstrap_passes_capabilities_through(client):
+    resp = await client.post(
+        USERS_URL,
+        json=_new_user_payload(
+            "capsfirst", role=UserRole.SUPERUSER.value, can_create_ca=True
+        ),
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["can_create_ca"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("flag", sorted(ALL_CAPABILITIES))
+async def test_anonymous_registration_cannot_set_capabilities(
+    client, monkeypatch, superuser, flag
+):
+    monkeypatch.setattr(settings, "ALLOW_UNAUTHENTICATED_REGISTRATION", True)
+    resp = await client.post(
+        USERS_URL, json=_new_user_payload("anoncaps", **{flag: True})
+    )
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "Not enough permissions to set capabilities"
+
+
+@pytest.mark.asyncio
+async def test_anonymous_capability_probe_does_not_leak_existence(
+    client, monkeypatch, superuser
+):
+    """The capability gate runs before uniqueness checks (issue #8 ordering)."""
+    monkeypatch.setattr(settings, "ALLOW_UNAUTHENTICATED_REGISTRATION", True)
+    existing = await client.post(
+        USERS_URL,
+        json={
+            "username": superuser.username,
+            "email": superuser.email,
+            "password": "Pewter-Lagoon-3087",
+            "can_create_ca": True,
+        },
+    )
+    fresh = await client.post(
+        USERS_URL, json=_new_user_payload("anoncapsfresh", can_create_ca=True)
+    )
+    assert existing.status_code == fresh.status_code == 403
+    assert existing.json()["detail"] == fresh.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_anonymous_registration_with_false_capabilities_succeeds(
+    client, monkeypatch, superuser
+):
+    """The CLI always sends every flag; explicit ``false`` must still register."""
+    monkeypatch.setattr(settings, "ALLOW_UNAUTHENTICATED_REGISTRATION", True)
+    resp = await client.post(
+        USERS_URL,
+        json=_new_user_payload(
+            "anonfalsecaps", **dict.fromkeys(ALL_CAPABILITIES, False)
+        ),
+    )
+    assert resp.status_code == 201, resp.text
+    assert not any(resp.json()[flag] for flag in ALL_CAPABILITIES)
+
+
+# ---------------------------------------------------------------------------
+# An ADMIN manages USER-role accounts in their org and themselves, but not
+# peer ADMINs: otherwise one org admin could reset another's password.
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def peer_admin(db: AsyncSession, admin_user: User) -> User:
+    return await UserService(db).create_user(
+        username="peeradmin",
+        email="peeradmin@example.com",
+        password="Pewter-Lagoon-3087",
+        role=UserRole.ADMIN,
+        organization_id=admin_user.organization_id,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"password": "Hijacked-Harbor-9137"},
+        {"email": "takeover@example.com"},
+        {"can_create_ca": True},
+    ],
+)
+async def test_admin_cannot_manage_peer_admin(admin_user, peer_admin, body):
+    transport = ASGITransport(app=_app_for(admin_user))
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.patch(f"{settings.API_V1_STR}/users/{peer_admin.id}", json=body)
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "Not enough permissions"
+
+
+@pytest.mark.asyncio
+async def test_admin_can_still_read_peer_admin(admin_user, peer_admin):
+    transport = ASGITransport(app=_app_for(admin_user))
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.get(f"{settings.API_V1_STR}/users/{peer_admin.id}")
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_admin_can_update_self(admin_user):
+    transport = ASGITransport(app=_app_for(admin_user))
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.patch(
+            f"{settings.API_V1_STR}/users/{admin_user.id}",
+            json={"email": "admin-self@example.com"},
+        )
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.asyncio
+async def test_superuser_can_manage_admin(superuser, peer_admin):
+    transport = ASGITransport(app=_app_for(superuser))
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.patch(
+            f"{settings.API_V1_STR}/users/{peer_admin.id}",
+            json={"password": "Recovered-Harbor-9137"},
+        )
+    assert resp.status_code == 200, resp.text
