@@ -65,7 +65,8 @@ The table below shows which roles and capabilities allow each action.
 | Create certificate | Yes | Yes | Flag | `can_create_cert` |
 | Revoke certificate | Yes | Yes | Flag | `can_revoke_cert` |
 | Export cert private key | Yes | Yes | Flag | `can_export_private_key` |
-| Manage users | Yes | — | — | — |
+| Create users | Any role, any org | `user` role, own org | — | — |
+| Update users | Yes | Non-superusers, own org | Self only | — |
 | Delete users | Yes | — | — | — |
 | Create organizations | Yes | Yes | — | — |
 | Delete organizations | Yes | — | — | — |

@@ -141,8 +141,8 @@ async def test_access_protected_endpoint_invalid_token(client):
 
 
 @pytest.mark.asyncio
-async def test_user_can_create_regular_user(client, db):
-    # Test to verify a user can create another regular user
+async def test_regular_user_cannot_create_regular_user(client, db):
+    # Issue #69: a USER-role account must not be able to create other users.
     # First create a regular user
     import time
 
@@ -179,10 +179,8 @@ async def test_user_can_create_regular_user(client, db):
     headers = {"Authorization": f"Bearer {token}"}
     response = await client.post("/api/v1/users/", json=new_user_data, headers=headers)
 
-    assert response.status_code == 201
-    data = response.json()
-    assert data["username"] == new_user_data["username"]
-    assert data["role"] == UserRole.USER.value
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Not enough permissions to create users"
 
 
 @pytest.mark.asyncio

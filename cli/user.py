@@ -71,14 +71,23 @@ def create(
     role: str = typer.Option(
         "user", "--role", "-r", help="Role: user, admin, superuser"
     ),
-    org_id: int | None = typer.Option(None, "--org", help="Organization ID"),
+    org_id: int | None = typer.Option(
+        None,
+        "--org",
+        help="Organization ID (superusers: any org; admins: own org, the default)",
+    ),
     can_create_ca: bool = typer.Option(False, "--can-create-ca"),
     can_create_cert: bool = typer.Option(False, "--can-create-cert"),
     can_revoke_cert: bool = typer.Option(False, "--can-revoke-cert"),
     can_export_private_key: bool = typer.Option(False, "--can-export-key"),
     can_delete_ca: bool = typer.Option(False, "--can-delete-ca"),
 ) -> None:
-    """Create a new user."""
+    """Create a new user.
+
+    Superusers can create any role in any organization. Admins can create
+    'user' accounts in their own organization only. Regular users cannot
+    create accounts.
+    """
     payload: dict[str, object] = {
         "username": username,
         "email": email,
