@@ -160,7 +160,7 @@ Get a user by ID.
 
 Update a user.
 
-- **Auth required:** Self (limited fields), Admin (non-superuser accounts in the same org), or Superuser
+- **Auth required:** Self (limited fields), Admin (`user`-role accounts in the same org; not other admins), or Superuser
 - **Content-Type:** `application/json`
 
 | Field | Type | Who can set |
@@ -248,17 +248,17 @@ Delete an organization.
 
 Add a user to an organization.
 
-- **Auth required:** Admin in the organization (only for users not in any organization, and never superusers), or Superuser
+- **Auth required:** Admin in the organization (only `user`-role accounts not in any organization), or Superuser
 
-**Response** `200`: Updated user object. **Errors:** `403` — an admin targeting another organization (checked before the user is looked up). `404` — the user does not exist, belongs to another organization, or is a superuser (for admins); or the organization does not exist (superusers).
+**Response** `200`: Updated user object. **Errors:** `403` — an admin targeting another organization (checked before the user is looked up), or an admin account. `404` — the user does not exist, belongs to another organization, or is a superuser (for admins); or the organization does not exist (superusers).
 
 ### `DELETE /organizations/{organization_id}/users/{user_id}`
 
 Remove a user from an organization.
 
-- **Auth required:** Admin in the organization, or Superuser
+- **Auth required:** Admin in the organization (`user`-role members and themselves; not other admins), or Superuser
 
-**Response** `200`: Updated user object. **Errors:** `403` — an admin targeting another organization (checked before the user is looked up). `404` — the user does not exist or is not in the admin's organization; or the organization does not exist (superusers).
+**Response** `200`: Updated user object. **Errors:** `403` — an admin targeting another organization (checked before the user is looked up), or a peer admin. `404` — the user does not exist or is not in the admin's organization; or the organization does not exist (superusers).
 
 ### `GET /organizations/{organization_id}/users`
 

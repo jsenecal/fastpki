@@ -97,7 +97,7 @@ curl -s -X PATCH http://localhost:8000/api/v1/users/2 \
   }' | python -m json.tool
 ```
 
-Admins can only update accounts in their own organization, and never superuser accounts. Regular users can only update themselves. Targeting an account you cannot see returns `404`; an account you can see but may not change returns `403`.
+Admins can only update `user`-role accounts in their own organization (and themselves); other admins and superusers require a superuser, so one admin cannot reset another admin's password. Regular users can only update themselves. Targeting an account you cannot see returns `404`; an account you can see but may not change returns `403`.
 
 | Field | Description | Who can change it |
 |-------|-------------|-------------------|

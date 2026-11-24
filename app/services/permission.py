@@ -159,7 +159,9 @@ class PermissionService:
         """Whether ``actor`` may modify ``target``'s account.
 
         Superusers manage everyone and every user manages themselves. An
-        ADMIN manages non-superuser accounts in their own organization only.
+        ADMIN manages USER-role accounts in their own organization only;
+        peer ADMIN accounts require a superuser, so one org admin cannot
+        take over another's account.
         """
         if actor.role == UserRole.SUPERUSER or actor.id == target.id:
             return True
@@ -167,7 +169,7 @@ class PermissionService:
             actor.role == UserRole.ADMIN
             and actor.organization_id is not None
             and target.organization_id == actor.organization_id
-            and target.role != UserRole.SUPERUSER
+            and target.role == UserRole.USER
         )
 
     @staticmethod

@@ -1157,3 +1157,67 @@ async def test_anonymous_registration_with_false_capabilities_succeeds(
     )
     assert resp.status_code == 201, resp.text
     assert not any(resp.json()[flag] for flag in ALL_CAPABILITIES)
+
+
+# ---------------------------------------------------------------------------
+# An ADMIN manages USER-role accounts in their org and themselves, but not
+# peer ADMINs: otherwise one org admin could reset another's password.
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def peer_admin(db: AsyncSession, admin_user: User) -> User:
+    return await UserService(db).create_user(
+        username="peeradmin",
+        email="peeradmin@example.com",
+        password="Pewter-Lagoon-3087",
+        role=UserRole.ADMIN,
+        organization_id=admin_user.organization_id,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"password": "Hijacked-Harbor-9137"},
+        {"email": "takeover@example.com"},
+        {"can_create_ca": True},
+    ],
+)
+async def test_admin_cannot_manage_peer_admin(admin_user, peer_admin, body):
+    transport = ASGITransport(app=_app_for(admin_user))
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.patch(f"{settings.API_V1_STR}/users/{peer_admin.id}", json=body)
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "Not enough permissions"
+
+
+@pytest.mark.asyncio
+async def test_admin_can_still_read_peer_admin(admin_user, peer_admin):
+    transport = ASGITransport(app=_app_for(admin_user))
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.get(f"{settings.API_V1_STR}/users/{peer_admin.id}")
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_admin_can_update_self(admin_user):
+    transport = ASGITransport(app=_app_for(admin_user))
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.patch(
+            f"{settings.API_V1_STR}/users/{admin_user.id}",
+            json={"email": "admin-self@example.com"},
+        )
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.asyncio
+async def test_superuser_can_manage_admin(superuser, peer_admin):
+    transport = ASGITransport(app=_app_for(superuser))
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.patch(
+            f"{settings.API_V1_STR}/users/{peer_admin.id}",
+            json={"password": "Recovered-Harbor-9137"},
+        )
+    assert resp.status_code == 200, resp.text

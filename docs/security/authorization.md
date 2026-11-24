@@ -74,12 +74,15 @@ The table below shows which roles and capabilities allow each action.
 | Revoke certificate | Yes | Yes | Flag | `can_revoke_cert` |
 | Export cert private key | Yes | Yes | Flag | `can_export_private_key` |
 | Create users | Any role, any org | `user` role, own org | — | — |
-| Update users | Yes | Non-superusers, own org | Self only | — |
+| Update users | Yes | `user` role in own org, and self | Self only | — |
 | Delete users | Yes | — | — | — |
 | Create organizations | Yes | Yes | — | — |
 | Delete organizations | Yes | — | — | — |
-| Manage org membership | Yes | Yes | — | — |
+| Manage org membership | Yes | `user` role (and self), own org | — | — |
 | View audit logs | Yes | Org-scoped | — | — |
+
+!!! note "Admins do not manage other admins"
+    An admin can change, add to, or remove from their organization only `user`-role accounts (and themselves). Resetting another admin's password, changing their email or capability flags, adding an admin to an organization, or removing a peer admin from it requires a superuser. This prevents one organization admin from taking over another's account.
 
 ## Endpoint-Level Auth Requirements
 
