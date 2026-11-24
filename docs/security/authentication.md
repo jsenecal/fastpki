@@ -108,6 +108,8 @@ The following operations can be performed without a token:
 
 By default, unauthenticated user registration is **disabled** after the first user is created. Set `ALLOW_UNAUTHENTICATED_REGISTRATION=true` to allow unauthenticated creation of regular user accounts. Superuser and admin accounts always require authentication.
 
+When registration is not permitted, unauthenticated requests to `POST /api/v1/users/` are rejected with a generic `403` *before* the username/email uniqueness checks run, so the endpoint cannot be used to discover which accounts exist. Enabling `ALLOW_UNAUTHENTICATED_REGISTRATION` necessarily re-exposes "username/email already registered" errors to anonymous callers; only enable it when account names are not sensitive.
+
 All other API endpoints require a valid bearer token.
 
 ## Failed Login Attempts

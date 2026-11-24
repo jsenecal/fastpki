@@ -107,7 +107,10 @@ Create a new user.
 
 **Response** `201`: User object.
 
-**Errors:** `400` — username/email already exists. `403` — insufficient permissions for role.
+**Errors:** `400` — username/email already exists. `403` — insufficient permissions for role, or unauthenticated registration is disabled.
+
+!!! note "Anti-enumeration"
+    Authentication and the registration policy are checked **before** username/email uniqueness. An unauthenticated caller who is not allowed to register always receives the same `403`, whether or not the supplied username or email exists. The `400` duplicate errors are only returned to callers who are permitted to create the account (authenticated callers, or anyone when `ALLOW_UNAUTHENTICATED_REGISTRATION=true`).
 
 ### `GET /users/`
 
