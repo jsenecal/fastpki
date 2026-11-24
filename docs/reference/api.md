@@ -386,7 +386,7 @@ Issue a new certificate under the specified CA.
 | `san_ip_addresses` | `string[]` | No | — | IP SAN entries (server/dual-purpose only) |
 | `san_email_addresses` | `string[]` | No | — | Email SAN entries (client/dual-purpose only) |
 
-For `server` and `dual_purpose` certificates, if no DNS SANs are supplied the Common Name is auto-added as a DNS SAN. For `client` certificates, if no email SANs are supplied and the Common Name parses as an email address, it is auto-added. SAN type restrictions are enforced: servers reject email SANs, clients reject DNS and IP SANs.
+For `server` and `dual_purpose` certificates, if **no SANs of any kind** are supplied (DNS, IP, or email), the Common Name is auto-added as a DNS SAN — provided it is a valid DNS name (a CN with spaces or an IP literal is never put in a DNS SAN). When any SAN list is supplied (e.g. IP-only), the SANs are used verbatim and the Common Name is not added. For `client` certificates, if no email SANs are supplied and the Common Name parses as an email address, it is auto-added. SAN type restrictions are enforced: servers reject email SANs, clients reject DNS and IP SANs.
 
 **Response** `201`: Certificate detail (includes private key if generated). **Errors:** `400` (includes when CA has `allow_leaf_certs=false`, or when SAN types violate the certificate-type restrictions), `403`, `404`.
 
@@ -410,6 +410,8 @@ Sign an externally-generated Certificate Signing Request. The submitted CSR's su
 | `san_dns_names` | `string[]` | No | From CSR | Override DNS SANs |
 | `san_ip_addresses` | `string[]` | No | From CSR | Override IP SANs |
 | `san_email_addresses` | `string[]` | No | From CSR | Override email SANs |
+
+After merging CSR values and overrides, the same SAN auto-population rule as `POST /certificates/` applies: the Common Name is added as a DNS SAN only if no SANs of any kind remain and it is a valid DNS name.
 
 Exactly one of `ca_id` or `ca_name` must be provided. The `certificate` service never returns a private key for this endpoint — the client retains the key it generated alongside the CSR.
 
@@ -614,7 +616,9 @@ Delete the policy (reverts the account to deny-all). **Auth:** admin.
 ### Issuance error codes (service accounts)
 
 When the caller is a service account, `POST /api/v1/certificates/` and
-`POST /api/v1/certificates/sign-csr` enforce the account's policy. Errors carry
+`POST /api/v1/certificates/sign-csr` (and `POST /api/v1/certificates/{id}/renew`)
+enforce the account's policy against the **effective** certificate parameters,
+including a Common Name that is auto-added as a DNS SAN. Errors carry
 a structured `detail`:
 
 | Status | `detail.code` | When |

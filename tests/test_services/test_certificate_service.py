@@ -574,3 +574,236 @@ def test_parse_subject_dn_escaped_comma():
     assert cn == "Doe, John"
     org = name.get_attributes_for_oid(NameOID.ORGANIZATION_NAME)[0].value
     assert org == "Test Org"
+
+
+# --- Effective SANs (issue #53) -------------------------------------------
+
+
+def _x509_sans(cert_pem: str) -> tuple[list[str], list[str], list[str]]:
+    return CertificateService.extract_cert_san_names(cert_pem)
+
+
+@pytest.mark.asyncio
+async def test_server_cert_ip_only_sans_do_not_auto_add_cn(
+    db: AsyncSession, test_ca: CertificateAuthority
+):
+    """An explicit IP-only SAN list is intentional: no CN DNS SAN is added."""
+    cert = await CertificateService(db).create_certificate(
+        ca_id=test_ca.id,
+        common_name="ip-only.example.com",
+        subject_dn="CN=ip-only.example.com",
+        certificate_type=CertificateType.SERVER,
+        san_ip_addresses=["10.24.0.5"],
+    )
+    dns, ips, _ = _x509_sans(cert.certificate)
+    assert dns == []
+    assert ips == ["10.24.0.5"]
+
+
+@pytest.mark.asyncio
+async def test_server_cert_invalid_dns_cn_not_auto_added(
+    db: AsyncSession, test_ca: CertificateAuthority
+):
+    """A CN that is not a valid DNS name must not be written into a DNS SAN."""
+    cert = await CertificateService(db).create_certificate(
+        ca_id=test_ca.id,
+        common_name="My Web Server",
+        subject_dn="CN=My Web Server",
+        certificate_type=CertificateType.SERVER,
+    )
+    x509_cert = x509.load_pem_x509_certificate(cert.certificate.encode("utf-8"))
+    with pytest.raises(x509.ExtensionNotFound):
+        x509_cert.extensions.get_extension_for_class(x509.SubjectAlternativeName)
+
+
+@pytest.mark.parametrize(
+    ("cert_type", "cn", "dns", "ips", "emails", "expected"),
+    [
+        # No SANs requested: CN becomes the DNS SAN for server-ish certs.
+        (
+            CertificateType.SERVER,
+            "a.example.com",
+            None,
+            None,
+            None,
+            (["a.example.com"], None, None),
+        ),
+        (
+            CertificateType.DUAL_PURPOSE,
+            "*.example.com",
+            [],
+            [],
+            [],
+            (["*.example.com"], None, None),
+        ),
+        (
+            CertificateType.SERVER,
+            "localhost",
+            None,
+            None,
+            None,
+            (["localhost"], None, None),
+        ),
+        (
+            CertificateType.SERVER,
+            "under_score.example.com",
+            None,
+            None,
+            None,
+            (["under_score.example.com"], None, None),
+        ),
+        # Any explicit SAN list suppresses auto-population.
+        (
+            CertificateType.SERVER,
+            "a.example.com",
+            None,
+            ["10.0.0.1"],
+            None,
+            (None, ["10.0.0.1"], None),
+        ),
+        (
+            CertificateType.DUAL_PURPOSE,
+            "a.example.com",
+            None,
+            None,
+            ["x@ex.com"],
+            (None, None, ["x@ex.com"]),
+        ),
+        (
+            CertificateType.SERVER,
+            "a.example.com",
+            ["b.example.com"],
+            None,
+            None,
+            (["b.example.com"], None, None),
+        ),
+        # CNs that are not valid DNS names are never auto-added.
+        (CertificateType.SERVER, "My Web Server", None, None, None, (None, None, None)),
+        (CertificateType.SERVER, "10.0.0.1", None, None, None, (None, None, None)),
+        (
+            CertificateType.SERVER,
+            "héllo.example.com",
+            None,
+            None,
+            None,
+            (None, None, None),
+        ),
+        (
+            CertificateType.SERVER,
+            "-bad.example.com",
+            None,
+            None,
+            None,
+            (None, None, None),
+        ),
+        (
+            CertificateType.SERVER,
+            "a..example.com",
+            None,
+            None,
+            None,
+            (None, None, None),
+        ),
+        (
+            CertificateType.SERVER,
+            "a.*.example.com",
+            None,
+            None,
+            None,
+            (None, None, None),
+        ),
+        (
+            CertificateType.SERVER,
+            "a" * 64 + ".example.com",
+            None,
+            None,
+            None,
+            (None, None, None),
+        ),
+        (
+            CertificateType.SERVER,
+            ("a" * 63 + ".") * 4 + "com",
+            None,
+            None,
+            None,
+            (None, None, None),
+        ),
+        (CertificateType.SERVER, "", None, None, None, (None, None, None)),
+        # Client: CN auto-added as email only when it looks like one.
+        (
+            CertificateType.CLIENT,
+            "u@example.com",
+            None,
+            None,
+            None,
+            (None, None, ["u@example.com"]),
+        ),
+        (CertificateType.CLIENT, "not-an-email", None, None, None, (None, None, None)),
+        (
+            CertificateType.CLIENT,
+            "u@example.com",
+            None,
+            None,
+            ["o@example.com"],
+            (None, None, ["o@example.com"]),
+        ),
+        # CA certificates never carry SANs.
+        (
+            CertificateType.CA,
+            "ca.example.com",
+            ["x.example.com"],
+            None,
+            None,
+            (None, None, None),
+        ),
+    ],
+)
+def test_effective_san_names(cert_type, cn, dns, ips, emails, expected):
+    eff = CertificateService.effective_san_names(
+        cert_type,
+        cn,
+        san_dns_names=dns,
+        san_ip_addresses=ips,
+        san_email_addresses=emails,
+    )
+    assert (eff.san_dns_names, eff.san_ip_addresses, eff.san_email_addresses) == (
+        expected
+    )
+
+
+def test_effective_san_names_is_idempotent():
+    first = CertificateService.effective_san_names(
+        CertificateType.SERVER, "a.example.com", None, None, None
+    )
+    second = CertificateService.effective_san_names(
+        CertificateType.SERVER,
+        "a.example.com",
+        first.san_dns_names,
+        first.san_ip_addresses,
+        first.san_email_addresses,
+    )
+    assert first == second
+
+
+@pytest.mark.asyncio
+async def test_resolve_csr_fields_includes_auto_populated_cn(
+    db: AsyncSession, simple_csr: str
+):
+    """Resolved CSR fields reflect the effective SANs, incl. auto-population."""
+    fields = CertificateService(db).resolve_csr_fields(
+        simple_csr, certificate_type=CertificateType.SERVER
+    )
+    assert fields.san_dns_names == ["simple.example.com"]
+
+
+@pytest.mark.asyncio
+async def test_resolve_csr_fields_ip_override_suppresses_auto_population(
+    db: AsyncSession, simple_csr: str
+):
+    fields = CertificateService(db).resolve_csr_fields(
+        simple_csr,
+        certificate_type=CertificateType.SERVER,
+        san_ip_addresses=["10.24.0.9"],
+    )
+    assert fields.san_dns_names is None
+    assert fields.san_ip_addresses == ["10.24.0.9"]

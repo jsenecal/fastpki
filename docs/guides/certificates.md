@@ -38,8 +38,20 @@ curl -s -X POST "http://localhost:8000/api/v1/certificates/?ca_id=1" \
 
 Modern TLS clients ignore the Common Name and rely on SANs. FastPKI auto-populates sensible defaults:
 
-- **Server / dual-purpose** certificates get a DNS SAN equal to the Common Name when no `san_dns_names` are provided.
+- **Server / dual-purpose** certificates get a DNS SAN equal to the Common Name when **no SANs of any kind** are provided (no `san_dns_names`, `san_ip_addresses`, or `san_email_addresses`). The Common Name is only used if it is a valid DNS name (letters, digits, `-`, `_`, optional leading `*.` wildcard); a CN such as `My Web Server` or an IP literal such as `10.0.0.1` is never written into a DNS SAN.
 - **Client** certificates whose Common Name parses as an email get an email SAN when no `san_email_addresses` are provided.
+
+!!! note "Explicit SANs are taken verbatim"
+    If you supply **any** SAN list, it is used exactly as given and the Common
+    Name is **not** added on top. For example, a server certificate requested
+    with only `san_ip_addresses: ["10.0.0.42"]` carries an IP SAN and no DNS
+    SAN. If you also want the Common Name as a DNS SAN, include it in
+    `san_dns_names`. (Before this change, the Common Name was added as a DNS SAN
+    whenever `san_dns_names` was omitted, even if IP SANs were given.)
+
+The same rules apply to `sign-csr` (after CSR values and overrides are merged)
+and to renewal. [Issuance policies](issuance-policies.md) are evaluated against
+these *effective* SANs — exactly what ends up in the certificate.
 
 SAN types are constrained by certificate type: servers reject email SANs; clients reject DNS and IP SANs. Violations return `400`.
 
