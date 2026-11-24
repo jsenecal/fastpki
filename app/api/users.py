@@ -50,6 +50,13 @@ async def create_user(
     result = await db.execute(select(User).limit(1))
     first_user = result.scalar_one_or_none() is None
     role = user_in.role or UserRole.USER
+    capabilities = {
+        "can_create_ca": user_in.can_create_ca,
+        "can_create_cert": user_in.can_create_cert,
+        "can_revoke_cert": user_in.can_revoke_cert,
+        "can_export_private_key": user_in.can_export_private_key,
+        "can_delete_ca": user_in.can_delete_ca,
+    }
 
     # Authorization (role + organization scoping, issue #69) runs before the
     # uniqueness checks below so callers who may not create the account cannot
@@ -61,6 +68,7 @@ async def create_user(
             user_in.organization_id,
             is_first_user=first_user,
             allow_unauthenticated_registration=settings.ALLOW_UNAUTHENTICATED_REGISTRATION,
+            grants_capabilities=any(capabilities.values()),
         )
     except PermissionDeniedError as e:
         logger.info("Create user failed: %s", e)
@@ -89,6 +97,7 @@ async def create_user(
         password=user_in.password,
         role=role,
         organization_id=organization_id,
+        **capabilities,
     )
 
     audit_service = AuditService(db)

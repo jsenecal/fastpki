@@ -100,6 +100,8 @@ Create a new user.
 | User | — | `403` |
 | Unauthenticated (`ALLOW_UNAUTHENTICATED_REGISTRATION=true`) | `user` | Always `null` (request value ignored) |
 
+Capability flags (`can_*`) are applied as requested for the first user, superusers, and admins. Unauthenticated self-registration may not set them: any flag set to `true` returns `403` (`false` is accepted).
+
 A supplied bearer token must be valid: an invalid, expired, or revoked token returns `401` instead of falling back to anonymous registration.
 
 | Field | Type | Required | Default | Description |
@@ -117,10 +119,10 @@ A supplied bearer token must be valid: an invalid, expired, or revoked token ret
 
 **Response** `201`: User object.
 
-**Errors:** `400` — username/email already exists, or the caller's account is inactive. `401` — invalid bearer token. `403` — caller may not create users, may not create the requested role, may not create users in the requested organization, or unauthenticated registration is disabled. `422` — validation error, including password policy violations.
+**Errors:** `400` — username/email already exists, or the caller's account is inactive. `401` — invalid bearer token. `403` — caller may not create users, may not create the requested role, may not create users in the requested organization, unauthenticated registration is disabled, or an unauthenticated request sets a capability flag. `422` — validation error, including password policy violations.
 
 !!! note "Anti-enumeration"
-    Authentication, the registration policy, and role/organization authorization are all checked **before** username/email uniqueness. A caller who is not allowed to create the account always receives the same `403`, whether or not the supplied username or email exists. The `400` duplicate errors are only returned to callers who are permitted to create the account (superusers, admins within their own organization, or anyone when `ALLOW_UNAUTHENTICATED_REGISTRATION=true`).
+    Authentication, the registration policy, and role/organization/capability authorization are all checked **before** username/email uniqueness. A caller who is not allowed to create the account always receives the same `403`, whether or not the supplied username or email exists. The `400` duplicate errors are only returned to callers who are permitted to create the account (superusers, admins within their own organization, or anyone when `ALLOW_UNAUTHENTICATED_REGISTRATION=true`).
 
 ### `GET /users/`
 

@@ -19,6 +19,7 @@ CAPABILITY_MAP: dict[PermissionAction, str] = {
 }
 
 ELEVATED_ROLE_DENIED = "Not enough permissions to create admin or superuser accounts"
+CAPABILITIES_DENIED = "Not enough permissions to set capabilities"
 
 
 def _as_principal(actor: Principal | User) -> Principal:
@@ -72,6 +73,7 @@ class PermissionService:
         *,
         is_first_user: bool,
         allow_unauthenticated_registration: bool,
+        grants_capabilities: bool = False,
     ) -> int | None:
         """Decide whether ``actor`` may create a user and return its org.
 
@@ -79,9 +81,14 @@ class PermissionService:
         ``PermissionDeniedError``. This is a pure decision with no DB access
         so it can run before any uniqueness lookup (issue #8 ordering).
 
+        ``grants_capabilities`` is true when the request sets any capability
+        flag. Callers allowed to create the account (superusers, and admins
+        in their own organization) may set flags; anonymous callers may not.
+
         - First user in the system: bootstrap, any role, org as requested.
         - Anonymous: USER role only, only when open registration is enabled,
-          and never into an organization (an org admin must add them).
+          never with capability flags, and never into an organization (an org
+          admin must add them).
         - SUPERUSER: any role, any organization.
         - ADMIN: USER role only, only in their own organization (defaulting
           to it when none is requested).
@@ -97,6 +104,8 @@ class PermissionService:
                 raise PermissionDeniedError(ELEVATED_ROLE_DENIED)
             if not allow_unauthenticated_registration:
                 raise PermissionDeniedError("Unauthenticated registration is disabled")  # noqa: TRY003
+            if grants_capabilities:
+                raise PermissionDeniedError(CAPABILITIES_DENIED)
             return None
 
         if actor.role == UserRole.SUPERUSER:

@@ -44,7 +44,7 @@ Regular users can be granted specific write permissions through boolean flags on
 
 ### Setting Capability Flags
 
-Superusers and admins (within the same organization) can set capability flags when creating or updating a user:
+Superusers and admins (within the same organization) can set capability flags when creating or updating a user. Unauthenticated self-registration cannot set them (`403`):
 
 ```bash
 # Grant cert creation and revocation to user 3
