@@ -5,13 +5,19 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from app.api.deps import get_current_active_superuser, get_current_active_user
+from app.api.deps import (
+    get_current_active_superuser,
+    get_current_active_user,
+    get_current_user,
+)
 from app.core.config import logger, settings
 from app.db.models import AuditAction, User, UserRole
 from app.db.session import get_session
 from app.schemas.user import User as UserSchema
 from app.schemas.user import UserCreate, UserUpdate
 from app.services.audit import AuditService
+from app.services.exceptions import PermissionDeniedError
+from app.services.permission import PermissionService
 from app.services.user import UserService
 
 # Optional OAuth2 scheme for endpoints that need to work with or without auth
@@ -31,7 +37,33 @@ async def create_user(
     logger.debug("Create user request for username: %s", user_in.username)
     user_service = UserService(db)
 
-    # Check if username already exists
+    # A supplied token must be valid: an invalid/expired/revoked token is a
+    # 401, never silently downgraded to an anonymous registration.
+    current_user: User | None = None
+    if token:
+        current_user = await get_current_user(token=token, db=db)
+        if not current_user.is_active:
+            raise HTTPException(status_code=400, detail="Inactive user")
+
+    result = await db.execute(select(User).limit(1))
+    first_user = result.scalar_one_or_none() is None
+    role = user_in.role or UserRole.USER
+
+    # Authorization (role + organization scoping, issue #69) runs before the
+    # uniqueness checks below so callers who may not create the account cannot
+    # enumerate existing usernames or emails (issue #8).
+    try:
+        organization_id = PermissionService.authorize_user_creation(
+            current_user,
+            role,
+            user_in.organization_id,
+            is_first_user=first_user,
+            allow_unauthenticated_registration=settings.ALLOW_UNAUTHENTICATED_REGISTRATION,
+        )
+    except PermissionDeniedError as e:
+        logger.info("Create user failed: %s", e)
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+
     db_user = await user_service.get_user_by_username(username=user_in.username)
     if db_user:
         logger.info("Create user failed: username already exists: %s", user_in.username)
@@ -40,7 +72,6 @@ async def create_user(
             detail="Username already registered",
         )
 
-    # Check if email already exists
     db_user = await user_service.get_user_by_email(email=user_in.email)
     if db_user:
         logger.info("Create user failed: email already exists: %s", user_in.email)
@@ -49,72 +80,13 @@ async def create_user(
             detail="Email already registered",
         )
 
-    # Set current_user if token is provided
-    current_user = None
-    if token:
-        try:
-            from app.api.deps import get_current_user
-
-            current_user = await get_current_user(token=token, db=db)
-            logger.debug(
-                "Token provided by user: %s (role: %s)",
-                current_user.username,
-                current_user.role,
-            )
-        except Exception as e:
-            logger.debug("Invalid token provided: %s", e)
-            # Invalid token, current_user remains None
-            pass
-
-    # Check if there are any users in the system
-    result = await db.execute(select(User).limit(1))
-    first_user = result.scalar_one_or_none() is None
-
-    logger.debug("First user check: %s", first_user)
-
-    # If not the first user and not authenticated, check registration policy
-    if not first_user and current_user is None:
-        # Elevated roles always require authentication
-        if user_in.role in [UserRole.ADMIN, UserRole.SUPERUSER]:
-            logger.info(
-                "Create user failed: insufficient permissions to create %s user",
-                user_in.role,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not enough permissions to create admin or superuser accounts",
-            )
-        # Regular user creation requires the setting to be enabled
-        if not settings.ALLOW_UNAUTHENTICATED_REGISTRATION:
-            logger.info("Create user failed: unauthenticated registration is disabled")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Unauthenticated registration is disabled",
-            )
-
-    # Only superusers can create users with admin/superuser roles
-    # But for the first user in the system, we allow any role
-    if (
-        user_in.role in [UserRole.ADMIN, UserRole.SUPERUSER]
-        and not first_user
-        and (current_user is None or current_user.role != UserRole.SUPERUSER)
-    ):
-        logger.info(
-            "Create user failed: insufficient permissions to create %s user",
-            user_in.role,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to create admin or superuser accounts",
-        )
-
     # Create the user
     user = await user_service.create_user(
         username=user_in.username,
         email=user_in.email,
         password=user_in.password,
-        role=user_in.role,
-        organization_id=user_in.organization_id,
+        role=role,
+        organization_id=organization_id,
     )
 
     audit_service = AuditService(db)
@@ -223,7 +195,14 @@ async def update_user(
             detail="User not found",
         )
 
-    # Check permissions
+    # Users manage themselves; ADMINs manage non-superusers in their own
+    # organization only; SUPERUSERs manage everyone (issue #69).
+    if not PermissionService.can_manage_user(current_user, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions",
+        )
+
     is_superuser = current_user.role == UserRole.SUPERUSER
     is_admin = current_user.role == UserRole.ADMIN
     is_self = current_user.id == user_id
@@ -264,13 +243,6 @@ async def update_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions to change organization assignment",
-        )
-
-    # Regular users can only update their own profile
-    if not (is_superuser or is_admin or is_self):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions",
         )
 
     # Don't allow downgrading superusers unless by another superuser

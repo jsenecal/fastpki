@@ -271,6 +271,8 @@ fastpki user create \
 
 Capability flags: `--can-create-ca`, `--can-create-cert`, `--can-revoke-cert`, `--can-export-key`, `--can-delete-ca`.
 
+Superusers can create any role and pass any `--org`. Admins can only create `user` accounts in their own organization; `--org` defaults to it, and any other organization is rejected. Regular users cannot create accounts.
+
 ### Update a user
 
 ```bash

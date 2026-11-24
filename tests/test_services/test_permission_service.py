@@ -114,14 +114,78 @@ async def test_superuser_always_allowed_ca(db: AsyncSession, su, org_ca):
         assert ca.id == org_ca.id
 
 
+WRITE_ACTIONS = [a for a in PermissionAction if a != PermissionAction.READ]
+
+
 @pytest.mark.asyncio
-async def test_resource_creator_always_allowed_ca(
+async def test_creator_without_capabilities_can_only_read_ca(
     db: AsyncSession, user_in_org, org_ca
 ):
+    """Creator status must not bypass capability checks (issue #7)."""
+    assert org_ca.created_by_user_id == user_in_org.id
+    perm = PermissionService(db)
+
+    ca = await perm.check_ca_access(user_in_org, org_ca.id, PermissionAction.READ)
+    assert ca.id == org_ca.id
+
+    for action in WRITE_ACTIONS:
+        with pytest.raises(PermissionDeniedError):
+            await perm.check_ca_access(user_in_org, org_ca.id, action)
+
+
+@pytest.mark.asyncio
+async def test_demoted_creator_loses_write_access_ca(db: AsyncSession, org, org_ca):
+    """An admin who created a CA loses write access once demoted (issue #7)."""
+    user_service = UserService(db)
+    creator = await user_service.create_user(
+        username="demotedcreator",
+        email="demotedcreator@example.com",
+        password="password123",
+        role=UserRole.ADMIN,
+        organization_id=org.id,
+    )
+    org_ca.created_by_user_id = creator.id
+    db.add(org_ca)
+    await db.commit()
+
+    perm = PermissionService(db)
+    await perm.check_ca_access(creator, org_ca.id, PermissionAction.DELETE_CA)
+
+    creator.role = UserRole.USER
+    db.add(creator)
+    await db.commit()
+
+    with pytest.raises(PermissionDeniedError):
+        await perm.check_ca_access(creator, org_ca.id, PermissionAction.DELETE_CA)
+    with pytest.raises(PermissionDeniedError):
+        await perm.check_ca_access(
+            creator, org_ca.id, PermissionAction.EXPORT_PRIVATE_KEY
+        )
+
+
+@pytest.mark.asyncio
+async def test_creator_loses_access_after_org_move_ca(
+    db: AsyncSession, other_org, org_ca
+):
+    """A creator moved to a different org loses access to their old resources."""
+    user_service = UserService(db)
+    moved_creator = await user_service.create_user(
+        username="movedcreator",
+        email="movedcreator@example.com",
+        password="password123",
+        role=UserRole.ADMIN,
+        organization_id=other_org.id,
+        can_export_private_key=True,
+    )
+    # Pretend this user originally created the CA before being moved.
+    org_ca.created_by_user_id = moved_creator.id
+    db.add(org_ca)
+    await db.commit()
+
     perm = PermissionService(db)
     for action in PermissionAction:
-        ca = await perm.check_ca_access(user_in_org, org_ca.id, action)
-        assert ca.id == org_ca.id
+        with pytest.raises(PermissionDeniedError):
+            await perm.check_ca_access(moved_creator, org_ca.id, action)
 
 
 @pytest.mark.asyncio
@@ -222,14 +286,55 @@ async def test_superuser_always_allowed_cert(db: AsyncSession, su, org_cert):
 
 
 @pytest.mark.asyncio
-async def test_resource_creator_always_allowed_cert(
+async def test_creator_without_capabilities_can_only_read_cert(
     db: AsyncSession, user_in_org, org_cert
 ):
+    """Creator of a certificate cannot revoke/export it without the flag."""
+    assert org_cert.created_by_user_id == user_in_org.id
     perm = PermissionService(db)
-    cert = await perm.check_cert_access(
-        user_in_org, org_cert.id, PermissionAction.REVOKE_CERT
-    )
+
+    cert = await perm.check_cert_access(user_in_org, org_cert.id, PermissionAction.READ)
     assert cert.id == org_cert.id
+
+    for action in WRITE_ACTIONS:
+        with pytest.raises(PermissionDeniedError):
+            await perm.check_cert_access(user_in_org, org_cert.id, action)
+
+
+@pytest.mark.asyncio
+async def test_creator_without_capabilities_denied_export_key_cert(
+    db: AsyncSession, user_in_org, org_cert
+):
+    """EXPORT_PRIVATE_KEY must require the explicit capability even for creators."""
+    perm = PermissionService(db)
+    with pytest.raises(PermissionDeniedError):
+        await perm.check_cert_access(
+            user_in_org, org_cert.id, PermissionAction.EXPORT_PRIVATE_KEY
+        )
+
+
+@pytest.mark.asyncio
+async def test_creator_loses_access_after_org_move_cert(
+    db: AsyncSession, other_org, org_cert
+):
+    user_service = UserService(db)
+    moved_creator = await user_service.create_user(
+        username="movedcertcreator",
+        email="movedcertcreator@example.com",
+        password="password123",
+        role=UserRole.USER,
+        organization_id=other_org.id,
+        can_revoke_cert=True,
+        can_export_private_key=True,
+    )
+    org_cert.created_by_user_id = moved_creator.id
+    db.add(org_cert)
+    await db.commit()
+
+    perm = PermissionService(db)
+    for action in PermissionAction:
+        with pytest.raises(PermissionDeniedError):
+            await perm.check_cert_access(moved_creator, org_cert.id, action)
 
 
 @pytest.mark.asyncio
