@@ -13,7 +13,7 @@ FastPKI lets you create and manage Certificate Authorities, issue certificates, 
 | **Certificate Authorities** | Root and intermediate CAs, path length constraints, chain of trust |
 | **Certificates** | Server, client, and CA certificates with configurable key sizes and validity |
 | **CRL & Public PKI** | CRL generation, public `/crl/` and `/ca/` download endpoints, CDP/AIA extensions embedded in certificates |
-| **Access Control** | Three roles (Superuser, Admin, User), per-user capability flags, organization-scoped ownership |
+| **Access Control** | Three roles (Superuser, Admin, User), per-user capability flags, organization-scoped access |
 | **Security** | JWT authentication, optional private key encryption at rest (Fernet), audit logging |
 | **Database** | SQLite (development) and PostgreSQL (production), Alembic migrations |
 | **CLI Tool** | Full-featured `fastpki` command-line interface, XDG config, table/JSON output |

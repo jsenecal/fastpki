@@ -1,8 +1,9 @@
 import pytest
 import pytest_asyncio
 
-from app.db.models import PermissionAction, UserRole
+from app.db.models import CertificateType, PermissionAction, UserRole
 from app.services.ca import CAService
+from app.services.cert import CertificateService
 from app.services.exceptions import PermissionDeniedError
 from app.services.organization import OrganizationService
 from app.services.permission import PermissionService
@@ -57,14 +58,82 @@ def test_principal_from_service_account_is_user_role_scoped(sa):
 
 
 @pytest.mark.asyncio
-async def test_sa_is_creator_of_its_own_ca(db, org, sa):
+async def test_sa_creator_without_capabilities_can_only_read_ca(db, org, sa):
+    """Creating a CA grants an SA no extra rights beyond its flags (issue #7)."""
     ca = await _ca_owned_by_sa(db, org, sa)
     perm = PermissionService(db)
-    # Creator gets full access even for actions it lacks a capability flag for.
-    result = await perm.check_ca_access(
-        Principal.from_service_account(sa), ca.id, PermissionAction.DELETE_CA
+    p = Principal.from_service_account(sa)
+    assert (await perm.check_ca_access(p, ca.id, PermissionAction.READ)).id == ca.id
+    # The SA holds can_create_cert, so that one is allowed via its flag.
+    assert (
+        await perm.check_ca_access(p, ca.id, PermissionAction.CREATE_CERT)
+    ).id == ca.id
+    for action in (
+        PermissionAction.CREATE_CA,
+        PermissionAction.REVOKE_CERT,
+        PermissionAction.EXPORT_PRIVATE_KEY,
+        PermissionAction.DELETE_CA,
+    ):
+        with pytest.raises(PermissionDeniedError):
+            await perm.check_ca_access(p, ca.id, action)
+
+
+@pytest.mark.asyncio
+async def test_sa_creator_without_export_flag_denied_cert_key(db, org, sa):
+    ca = await _org_ca(db, org)
+    cert = await CertificateService(db).create_certificate(
+        ca_id=ca.id,
+        common_name="sa.example.com",
+        subject_dn="CN=sa.example.com",
+        certificate_type=CertificateType.SERVER,
+        organization_id=org.id,
+        created_by_service_account_id=sa.id,
     )
-    assert result.id == ca.id
+    perm = PermissionService(db)
+    p = Principal.from_service_account(sa)
+    assert (
+        await perm.check_cert_access(p, cert.id, PermissionAction.READ)
+    ).id == cert.id
+    for action in (
+        PermissionAction.EXPORT_PRIVATE_KEY,
+        PermissionAction.REVOKE_CERT,
+    ):
+        with pytest.raises(PermissionDeniedError):
+            await perm.check_cert_access(p, cert.id, action)
+
+
+@pytest.mark.asyncio
+async def test_sa_creator_moved_org_loses_access(db, org, other_org, sa):
+    ca = await _ca_owned_by_sa(db, org, sa)
+    sa.organization_id = other_org.id
+    sa.can_create_ca = True
+    sa.can_delete_ca = True
+    sa.can_export_private_key = True
+    db.add(sa)
+    await db.commit()
+    await db.refresh(sa)
+
+    perm = PermissionService(db)
+    p = Principal.from_service_account(sa)
+    for action in PermissionAction:
+        with pytest.raises(PermissionDeniedError):
+            await perm.check_ca_access(p, ca.id, action)
+
+
+@pytest.mark.asyncio
+async def test_sa_capability_flags_still_grant_access_on_own_ca(db, org, sa):
+    """Flags (not creator status) are what authorize an SA's writes."""
+    ca = await _ca_owned_by_sa(db, org, sa)
+    sa.can_delete_ca = True
+    sa.can_export_private_key = True
+    db.add(sa)
+    await db.commit()
+    await db.refresh(sa)
+
+    perm = PermissionService(db)
+    p = Principal.from_service_account(sa)
+    for action in (PermissionAction.DELETE_CA, PermissionAction.EXPORT_PRIVATE_KEY):
+        assert (await perm.check_ca_access(p, ca.id, action)).id == ca.id
 
 
 @pytest.mark.asyncio

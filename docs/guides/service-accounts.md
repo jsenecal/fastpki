@@ -12,8 +12,8 @@ A service account:
   `can_create_cert`, `can_revoke_cert`, `can_export_private_key`,
   `can_delete_ca`);
 - owns one or more **tokens** used as bearer credentials;
-- is never an admin or superuser — it authorizes purely via its organization,
-  the resources it created, and its capability flags.
+- is never an admin or superuser — it authorizes purely via its organization
+  and its capability flags.
 
 !!! note "Management is human-only"
     Creating, updating, deleting service accounts and minting/revoking their
@@ -133,8 +133,10 @@ Authorization then follows the same rules as a user (see
 
 - it can read and act on resources in its own organization subject to its
   capability flags;
-- it has full access to resources **it created** (tracked via
-  `created_by_service_account_id`);
+- creating a resource grants it no extra rights — `created_by_service_account_id`
+  is recorded for attribution only, so a CA or certificate it issued is still
+  governed by its current capability flags (e.g. exporting that certificate's
+  private key requires `can_export_private_key`);
 - it can never reach resources in another organization or unowned resources.
 
 !!! tip "Pre-organization CAs"
