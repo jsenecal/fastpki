@@ -73,7 +73,7 @@ class PermissionService:
         *,
         is_first_user: bool,
         allow_unauthenticated_registration: bool,
-        grants_capabilities: bool = False,
+        grants_capabilities: bool,
     ) -> int | None:
         """Decide whether ``actor`` may create a user and return its org.
 
