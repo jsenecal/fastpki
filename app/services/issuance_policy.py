@@ -55,7 +55,7 @@ class IssuancePolicyService:
         policy.allowed_certificate_types = [t.value for t in allowed_certificate_types]
         policy.max_validity_days = max_validity_days
         self.db.add(policy)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(policy)
         return policy
 
@@ -65,7 +65,7 @@ class IssuancePolicyService:
                 IssuancePolicy.service_account_id == service_account_id
             )
         )
-        await self.db.commit()
+        await self.db.flush()
 
     async def enforce(
         self,

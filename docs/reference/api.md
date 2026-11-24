@@ -100,6 +100,8 @@ Create a new user.
 | User | — | `403` |
 | Unauthenticated (`ALLOW_UNAUTHENTICATED_REGISTRATION=true`) | `user` | Always `null` (request value ignored) |
 
+Capability flags (`can_*`) are applied as requested for the first user, superusers, and admins. Unauthenticated self-registration may not set them: any flag set to `true` returns `403` (`false` is accepted).
+
 A supplied bearer token must be valid: an invalid, expired, or revoked token returns `401` instead of falling back to anonymous registration.
 
 | Field | Type | Required | Default | Description |
@@ -117,10 +119,10 @@ A supplied bearer token must be valid: an invalid, expired, or revoked token ret
 
 **Response** `201`: User object.
 
-**Errors:** `400` — username/email already exists, or the caller's account is inactive. `401` — invalid bearer token. `403` — caller may not create users, may not create the requested role, may not create users in the requested organization, or unauthenticated registration is disabled. `422` — validation error, including password policy violations.
+**Errors:** `400` — username/email already exists, or the caller's account is inactive. `401` — invalid bearer token. `403` — caller may not create users, may not create the requested role, may not create users in the requested organization, unauthenticated registration is disabled, or an unauthenticated request sets a capability flag. `422` — validation error, including password policy violations.
 
 !!! note "Anti-enumeration"
-    Authentication, the registration policy, and role/organization authorization are all checked **before** username/email uniqueness. A caller who is not allowed to create the account always receives the same `403`, whether or not the supplied username or email exists. The `400` duplicate errors are only returned to callers who are permitted to create the account (superusers, admins within their own organization, or anyone when `ALLOW_UNAUTHENTICATED_REGISTRATION=true`).
+    Authentication, the registration policy, and role/organization/capability authorization are all checked **before** username/email uniqueness. A caller who is not allowed to create the account always receives the same `403`, whether or not the supplied username or email exists. The `400` duplicate errors are only returned to callers who are permitted to create the account (superusers, admins within their own organization, or anyone when `ALLOW_UNAUTHENTICATED_REGISTRATION=true`).
 
 ### `GET /users/`
 
@@ -147,15 +149,18 @@ Get the current authenticated user.
 
 Get a user by ID.
 
-- **Auth required:** Self, Admin, or Superuser
+- **Auth required:** Self, Admin (users in the same org), or Superuser
 
-**Response** `200`: User object. **Errors:** `403`, `404`.
+**Response** `200`: User object. **Errors:** `404` — the user does not exist, or the caller may not see it.
+
+!!! note "No user-ID enumeration"
+    Endpoints that take a `user_id` answer `404 User not found` both for an ID that does not exist and for an account outside the caller's visibility (another organization, or anyone but themselves for a regular user). Only accounts the caller can already see may produce a `403`.
 
 ### `PATCH /users/{user_id}`
 
 Update a user.
 
-- **Auth required:** Self (limited fields), Admin (non-superuser accounts in the same org), or Superuser
+- **Auth required:** Self (limited fields), Admin (`user`-role accounts in the same org; not other admins), or Superuser
 - **Content-Type:** `application/json`
 
 | Field | Type | Who can set |
@@ -171,7 +176,7 @@ Update a user.
 | `can_export_private_key` | `bool` | Admin (same org), Superuser |
 | `can_delete_ca` | `bool` | Admin (same org), Superuser |
 
-**Response** `200`: Updated user object. **Errors:** `403`, `404`, `422` (validation error, including a new `password` that violates the [password policy](../security/authentication.md#password-policy)).
+**Response** `200`: Updated user object. **Errors:** `403` — the caller can see the account but may not make this change. `404` — the user does not exist, or the caller may not see it. `422` (validation error, including a new `password` that violates the [password policy](../security/authentication.md#password-policy)).
 
 ### `DELETE /users/{user_id}`
 
@@ -243,17 +248,17 @@ Delete an organization.
 
 Add a user to an organization.
 
-- **Auth required:** Admin in the organization (only for users not in any organization, and never superusers), or Superuser
+- **Auth required:** Admin in the organization (only `user`-role accounts not in any organization), or Superuser
 
-**Response** `200`: Updated user object. **Errors:** `403`, `404`.
+**Response** `200`: Updated user object. **Errors:** `403` — an admin targeting another organization (checked before the user is looked up), or an admin account. `404` — the user does not exist, belongs to another organization, or is a superuser (for admins); or the organization does not exist (superusers).
 
 ### `DELETE /organizations/{organization_id}/users/{user_id}`
 
 Remove a user from an organization.
 
-- **Auth required:** Admin in the organization, or Superuser
+- **Auth required:** Admin in the organization (`user`-role members and themselves; not other admins), or Superuser
 
-**Response** `200`: Updated user object. **Errors:** `403`, `404`.
+**Response** `200`: Updated user object. **Errors:** `403` — an admin targeting another organization (checked before the user is looked up), or a peer admin. `404` — the user does not exist or is not in the admin's organization; or the organization does not exist (superusers).
 
 ### `GET /organizations/{organization_id}/users`
 

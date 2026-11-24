@@ -37,7 +37,7 @@ class OrganizationService:
         )
 
         self.db.add(org)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(org)
         return org
 
@@ -80,7 +80,7 @@ class OrganizationService:
             org.description = description
 
         self.db.add(org)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(org)
         return org
 
@@ -95,7 +95,7 @@ class OrganizationService:
             raise HasDependentsError(_HAS_USERS)
 
         await self.db.delete(org)
-        await self.db.commit()
+        await self.db.flush()
         return True
 
     async def add_user_to_organization(
@@ -123,7 +123,7 @@ class OrganizationService:
         user.organization_id = org_id
 
         self.db.add(user)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(user)
         return user
 
@@ -151,7 +151,7 @@ class OrganizationService:
         user.organization_id = None
 
         self.db.add(user)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(user)
         return user
 
@@ -224,12 +224,17 @@ class OrganizationService:
 
         # An org admin may only bring in unassigned users (or re-add their
         # own members); they must not pull another tenant's user, or a
-        # superuser, into their organization (issue #69).
+        # superuser, into their organization (issue #69). Only USER-role
+        # accounts qualify: granting admin rights over an org is a superuser
+        # decision.
         target = await self.db.get(User, user_id)
-        return (
-            target is not None
-            and target.role != UserRole.SUPERUSER
-            and target.organization_id in (None, org_id)
+        if target is None:
+            return False
+        if target.id == admin_user.id:
+            return True
+        return target.role == UserRole.USER and target.organization_id in (
+            None,
+            org_id,
         )
 
     async def user_can_remove_user_from_organization(
@@ -251,7 +256,10 @@ class OrganizationService:
         if admin_user.role == UserRole.SUPERUSER:
             return True
 
+        # An org admin removes USER-role members and may leave themselves;
+        # removing a peer admin requires a superuser.
         return (
             admin_user.role == UserRole.ADMIN
             and admin_user.organization_id == user.organization_id
+            and (user.role == UserRole.USER or user.id == admin_user.id)
         )

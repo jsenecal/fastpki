@@ -282,7 +282,7 @@ class CAService:
         if parent_ca is not None:
             parent_ca.allow_leaf_certs = False
 
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(ca)
 
         return ca
@@ -360,7 +360,7 @@ class CAService:
             )
             certs_updated = cert_result.rowcount  # type: ignore[attr-defined]
 
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(ca)
         return OrganizationAssignment(
             ca=ca,
@@ -386,7 +386,7 @@ class CAService:
             )
 
         await self.db.delete(ca)
-        await self.db.commit()
+        await self.db.flush()
         return True
 
     async def get_ca_chain(self, ca_id: int) -> list[CertificateAuthority]:

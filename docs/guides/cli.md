@@ -269,7 +269,7 @@ fastpki user create \
   --can-create-cert
 ```
 
-Capability flags: `--can-create-ca`, `--can-create-cert`, `--can-revoke-cert`, `--can-export-key`, `--can-delete-ca`.
+Capability flags: `--can-create-ca`, `--can-create-cert`, `--can-revoke-cert`, `--can-export-key`, `--can-delete-ca`. They are applied when a superuser or admin creates the account; an unauthenticated self-registration that sets any of them is rejected.
 
 Superusers can create any role and pass any `--org`. Admins can only create `user` accounts in their own organization; `--org` defaults to it, and any other organization is rejected. Regular users cannot create accounts.
 

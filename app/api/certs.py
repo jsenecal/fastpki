@@ -84,7 +84,7 @@ async def create_certificate(
     cert_in: CertificateCreate,
     ca_id: int,
     request: Request,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     principal: Principal = Depends(get_current_principal),  # noqa: B008
 ) -> CertificateDetailResponse:
     """Create a new certificate signed by the specified CA."""
@@ -172,7 +172,7 @@ async def create_certificate(
 async def sign_csr(
     csr_in: CSRSignRequest,
     request: Request,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     principal: Principal = Depends(get_current_principal),  # noqa: B008
 ) -> CertificateResponse:
     """Sign a CSR. Extracts defaults from the CSR; explicit fields override."""
@@ -274,7 +274,7 @@ async def sign_csr(
 @router.get("/", response_model=list[CertificateResponse])
 async def read_certificates(
     ca_id: int | None = Query(None, description="Filter by CA ID"),
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     principal: Principal = Depends(get_current_principal),  # noqa: B008
 ) -> list[CertificateResponse]:
     """Get all certificates, optionally filtered by CA ID."""
@@ -292,7 +292,7 @@ async def read_certificates(
 @router.get("/{cert_id}", response_model=CertificateResponse)
 async def read_certificate(
     cert_id: int,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     principal: Principal = Depends(get_current_principal),  # noqa: B008
 ) -> CertificateResponse:
     """Get a specific certificate by ID."""
@@ -311,7 +311,7 @@ async def read_certificate(
 @router.get("/{cert_id}/private-key", response_model=CertificateDetailResponse)
 async def read_certificate_with_private_key(
     cert_id: int,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     principal: Principal = Depends(get_current_principal),  # noqa: B008
 ) -> CertificateDetailResponse:
     """Get a specific certificate by ID, including private key if available."""
@@ -340,7 +340,7 @@ async def read_certificate_with_private_key(
 async def revoke_certificate(
     cert_id: int,
     revoke_data: CertificateRevoke,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     principal: Principal = Depends(get_current_principal),  # noqa: B008
 ) -> CertificateResponse:
     """Revoke a certificate by ID."""
@@ -385,7 +385,7 @@ async def renew_certificate_endpoint(
     cert_id: int,
     renew_in: CertificateRenewRequest,
     request: Request,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     principal: Principal = Depends(get_current_principal),  # noqa: B008
 ) -> CertificateDetailResponse:
     """Renew a certificate, inheriting subject/SANs/CA/type and recording lineage.

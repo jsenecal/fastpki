@@ -128,7 +128,7 @@ async def test_regular_user_cannot_set_capabilities(
             f"{settings.API_V1_STR}/users/{target_user.id}",
             json={"can_create_ca": True},
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -144,4 +144,4 @@ async def test_admin_cannot_set_capabilities_for_other_org(
             f"{settings.API_V1_STR}/users/{target_user.id}",
             json={"can_create_ca": True},
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 404

@@ -153,7 +153,7 @@ async def test_org_admin_cannot_pull_user_from_other_org(
         f"{admin_user.organization_id}/users/{other_org_member.id}"
     )
 
-    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 @pytest.mark.asyncio
@@ -167,4 +167,68 @@ async def test_org_admin_cannot_add_superuser_to_own_org(
         f"{admin_user.organization_id}/users/{superuser.id}"
     )
 
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest_asyncio.fixture
+async def unassigned_admin(db: AsyncSession) -> User:
+    return await UserService(db).create_user(
+        username="unassigned_admin",
+        email="unassigned_admin@example.com",
+        password="Pewter-Lagoon-3087",
+        role=UserRole.ADMIN,
+    )
+
+
+@pytest_asyncio.fixture
+async def peer_admin(db: AsyncSession, admin_user: User) -> User:
+    return await UserService(db).create_user(
+        username="peer_org_admin",
+        email="peer_org_admin@example.com",
+        password="Pewter-Lagoon-3087",
+        role=UserRole.ADMIN,
+        organization_id=admin_user.organization_id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_org_admin_cannot_add_admin_to_own_org(
+    admin_client_for: AsyncClient,
+    admin_user: User,
+    unassigned_admin: User,
+):
+    """Only superusers grant admin rights over an organization."""
+    response = await admin_client_for.post(
+        f"{settings.API_V1_STR}/organizations/"
+        f"{admin_user.organization_id}/users/{unassigned_admin.id}"
+    )
+
     assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.asyncio
+async def test_org_admin_cannot_remove_peer_admin(
+    admin_client_for: AsyncClient,
+    admin_user: User,
+    peer_admin: User,
+):
+    response = await admin_client_for.delete(
+        f"{settings.API_V1_STR}/organizations/"
+        f"{admin_user.organization_id}/users/{peer_admin.id}"
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.asyncio
+async def test_org_admin_can_remove_self(
+    admin_client_for: AsyncClient,
+    admin_user: User,
+):
+    response = await admin_client_for.delete(
+        f"{settings.API_V1_STR}/organizations/"
+        f"{admin_user.organization_id}/users/{admin_user.id}"
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.text
+    assert response.json()["organization_id"] is None

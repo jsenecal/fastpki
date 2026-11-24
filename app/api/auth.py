@@ -26,7 +26,7 @@ limiter = Limiter(key_func=get_remote_address)
 async def login_for_access_token(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),  # noqa: B008
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
 ) -> Any:
     logger.debug("Login attempt for username: %s", form_data.username)
     user_service = UserService(db)
@@ -40,6 +40,9 @@ async def login_for_access_token(
             action=AuditAction.LOGIN_FAILURE,
             username=form_data.username,
         )
+        # Failure audit: commit before raising, otherwise the request unit of
+        # work rolls the entry back along with the failed request.
+        await db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -73,7 +76,7 @@ async def login_for_access_token(
 @router.post("/refresh", response_model=Token)
 async def refresh_access_token(
     body: RefreshTokenRequest,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
 ) -> Any:
     token_service = TokenService(db)
     refresh_token = await token_service.validate_and_revoke_refresh_token(
@@ -89,6 +92,8 @@ async def refresh_access_token(
     user_service = UserService(db)
     user = await user_service.get_user_by_id(refresh_token.user_id)
     if not user or not user.is_active:
+        # Keep the presented token revoked even though the request fails.
+        await db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
@@ -114,7 +119,7 @@ async def logout(
     user_and_payload: tuple[User, TokenPayload] = Depends(
         get_current_user_with_payload
     ),
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
 ) -> None:
     current_user, token_data = user_and_payload
 
@@ -137,12 +142,10 @@ async def logout(
 @router.post("/invalidate", status_code=status.HTTP_204_NO_CONTENT)
 async def invalidate_all_tokens(
     current_user: User = Depends(get_current_active_user),  # noqa: B008
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
 ) -> None:
     current_user.tokens_invalidated_at = datetime.now(ZoneInfo("UTC"))
     db.add(current_user)
 
     token_service = TokenService(db)
     await token_service.revoke_all_user_refresh_tokens(user_id=current_user.id)
-
-    await db.commit()

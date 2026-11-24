@@ -17,7 +17,8 @@ from app.api.deps import (
 )
 from app.core.config import settings
 from app.db.models import User, UserRole
-from app.db.session import get_session
+from app.db.session import get_session, unit_of_work
+from tests.conftest import ArrangeSession
 
 # Test database for this specific test
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test_organizations.db"
@@ -36,7 +37,7 @@ test_session_maker = async_sessionmaker(
 
 
 async def get_test_session() -> AsyncSession:
-    async with test_session_maker() as session:
+    async with unit_of_work(test_session_maker) as session:
         yield session
 
 
@@ -98,7 +99,10 @@ async def setup_test_db():
 
 @pytest_asyncio.fixture
 async def test_db(setup_test_db):
-    async with test_session_maker() as session:
+    # Arrangement session: commits on each service flush (see conftest).
+    async with ArrangeSession(
+        bind=test_session_maker.kw["bind"], expire_on_commit=False
+    ) as session:
         try:
             yield session
         finally:

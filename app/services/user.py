@@ -87,7 +87,7 @@ class UserService:
         )
 
         self.db.add(user)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(user)
 
         logger.debug("User created successfully: %s with ID %s", username, user.id)
@@ -151,12 +151,10 @@ class UserService:
             from app.services.token import TokenService
 
             token_service = TokenService(self.db)
-            await token_service.revoke_all_user_refresh_tokens(
-                user_id=user_id, commit=False
-            )
+            await token_service.revoke_all_user_refresh_tokens(user_id=user_id)
 
         self.db.add(user)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(user)
 
         return user
@@ -168,7 +166,7 @@ class UserService:
             return False
 
         await self.db.delete(user)
-        await self.db.commit()
+        await self.db.flush()
 
         return True
 

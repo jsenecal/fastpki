@@ -81,12 +81,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 async def token_gc_loop() -> None:
     """Periodically clean up expired blocklisted and refresh tokens."""
-    from app.db.session import async_session_factory
+    from app.db.session import async_session_factory, unit_of_work
     from app.services.token import TokenService
 
     while True:
         try:
-            async with async_session_factory() as session:
+            async with unit_of_work(async_session_factory) as session:
                 token_service = TokenService(session)
                 deleted = await token_service.cleanup_expired_tokens()
                 if deleted > 0:
@@ -156,7 +156,7 @@ def create_app(enable_docs: bool | None = None) -> FastAPI:
 
     @application.get("/health")
     async def health(
-        db: AsyncSession = Depends(get_session),  # noqa: B008
+        db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     ) -> Response:
         """Liveness/readiness probe that verifies database connectivity.
 

@@ -54,7 +54,7 @@ async def _get_in_scope(
 )
 async def create_service_account(
     sa_in: ServiceAccountCreate,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     current_user: User = Depends(get_current_active_admin_user),  # noqa: B008
 ) -> ServiceAccount:
     """Create a service account in the caller's organization (admin only)."""
@@ -100,7 +100,7 @@ async def create_service_account(
 
 @router.get("/", response_model=list[ServiceAccountResponse])
 async def list_service_accounts(
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     current_user: User = Depends(get_current_active_user),  # noqa: B008
 ) -> list[ServiceAccount]:
     """List service accounts in the caller's organization (all for superusers)."""
@@ -117,7 +117,7 @@ async def list_service_accounts(
 @router.get("/{sa_id}", response_model=ServiceAccountResponse)
 async def read_service_account(
     sa_id: int,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     current_user: User = Depends(get_current_active_user),  # noqa: B008
 ) -> ServiceAccount:
     """Get a service account by ID (org-scoped)."""
@@ -129,7 +129,7 @@ async def read_service_account(
 async def update_service_account(
     sa_id: int,
     sa_in: ServiceAccountUpdate,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     current_user: User = Depends(get_current_active_admin_user),  # noqa: B008
 ) -> ServiceAccount:
     """Update a service account (admin only)."""
@@ -167,7 +167,7 @@ async def update_service_account(
 @router.delete("/{sa_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_service_account(
     sa_id: int,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     current_user: User = Depends(get_current_active_admin_user),  # noqa: B008
 ) -> None:
     """Delete a service account and its tokens (admin only)."""
@@ -193,7 +193,7 @@ async def delete_service_account(
 async def create_service_account_token(
     sa_id: int,
     token_in: ServiceAccountTokenCreate,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     current_user: User = Depends(get_current_active_admin_user),  # noqa: B008
 ) -> ServiceAccountTokenCreateResponse:
     """Mint a token (admin only). The plaintext is returned only here."""
@@ -220,7 +220,7 @@ async def create_service_account_token(
 @router.get("/{sa_id}/tokens", response_model=list[ServiceAccountTokenResponse])
 async def list_service_account_tokens(
     sa_id: int,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     current_user: User = Depends(get_current_active_user),  # noqa: B008
 ) -> list[ServiceAccountToken]:
     """List token metadata for a service account (org-scoped)."""
@@ -233,7 +233,7 @@ async def list_service_account_tokens(
 async def revoke_service_account_token(
     sa_id: int,
     token_id: int,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     current_user: User = Depends(get_current_active_admin_user),  # noqa: B008
 ) -> None:
     """Revoke a service account token (admin only)."""
@@ -263,7 +263,7 @@ async def revoke_service_account_token(
 async def set_service_account_policy(
     sa_id: int,
     policy_in: IssuancePolicyUpsert,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     current_user: User = Depends(get_current_active_admin_user),  # noqa: B008
 ) -> object:
     """Create or replace the issuance policy for a service account (admin only)."""
@@ -294,7 +294,7 @@ async def set_service_account_policy(
 @router.get("/{sa_id}/policy", response_model=IssuancePolicyResponse)
 async def read_service_account_policy(
     sa_id: int,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     current_user: User = Depends(get_current_active_user),  # noqa: B008
 ) -> object:
     """Read the issuance policy for a service account (org-scoped)."""
@@ -312,7 +312,7 @@ async def read_service_account_policy(
 @router.delete("/{sa_id}/policy", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_service_account_policy(
     sa_id: int,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
     current_user: User = Depends(get_current_active_admin_user),  # noqa: B008
 ) -> None:
     """Delete the issuance policy, reverting the account to deny-all (admin only)."""

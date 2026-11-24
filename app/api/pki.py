@@ -28,7 +28,7 @@ async def _resolve_ca(ca_slug: str, db: AsyncSession) -> CertificateAuthority:
 @crl_router.get("/{ca_slug}.pem")
 async def get_crl_pem(
     ca_slug: str,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
 ) -> Response:
     """Download the CRL for a CA in PEM format."""
     ca = await _resolve_ca(ca_slug, db)
@@ -48,7 +48,7 @@ async def get_crl_pem(
 @crl_router.get("/{ca_slug}")
 async def get_crl_der(
     ca_slug: str,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
 ) -> Response:
     """Download the CRL for a CA in DER format."""
     ca = await _resolve_ca(ca_slug, db)
@@ -66,7 +66,7 @@ async def get_crl_der(
 @ca_router.get("/{ca_slug}.pem")
 async def get_ca_cert_pem(
     ca_slug: str,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
 ) -> Response:
     """Download a CA certificate in PEM format."""
     ca = await _resolve_ca(ca_slug, db)
@@ -82,7 +82,7 @@ async def get_ca_cert_pem(
 @ca_router.get("/{ca_slug}.crt")
 async def get_ca_cert_der(
     ca_slug: str,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session, scope="function"),  # noqa: B008
 ) -> Response:
     """Download a CA certificate in DER format."""
     ca = await _resolve_ca(ca_slug, db)
