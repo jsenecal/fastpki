@@ -16,7 +16,7 @@ async def test_login_success(client, db):
     user_data = {
         "username": "testuser",
         "email": "test@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
 
     await client.post("/api/v1/users/", json=user_data)
@@ -26,7 +26,8 @@ async def test_login_success(client, db):
 
     # For OAuth2PasswordRequestForm, use proper formData format
     response = await client.post(
-        "/api/v1/auth/token", data={"username": "testuser", "password": "password123"}
+        "/api/v1/auth/token",
+        data={"username": "testuser", "password": "Kestrel-Meadow-4821"},
     )
 
     assert response.status_code == 200
@@ -49,7 +50,7 @@ async def test_login_invalid_credentials(client, db):
     user_data = {
         "username": "invalidtest",
         "email": "invalid@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
 
     await client.post("/api/v1/users/", json=user_data)
@@ -94,7 +95,7 @@ async def test_access_protected_endpoint(client, db):
     user_data = {
         "username": "protecteduser",
         "email": "protected@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
 
     await client.post("/api/v1/users/", json=user_data)
@@ -104,7 +105,7 @@ async def test_access_protected_endpoint(client, db):
 
     login_response = await client.post(
         "/api/v1/auth/token",
-        data={"username": "protecteduser", "password": "password123"},
+        data={"username": "protecteduser", "password": "Kestrel-Meadow-4821"},
     )
     token = login_response.json()["access_token"]
 
@@ -141,8 +142,8 @@ async def test_access_protected_endpoint_invalid_token(client):
 
 
 @pytest.mark.asyncio
-async def test_user_can_create_regular_user(client, db):
-    # Test to verify a user can create another regular user
+async def test_regular_user_cannot_create_regular_user(client, db):
+    # Issue #69: a USER-role account must not be able to create other users.
     # First create a regular user
     import time
 
@@ -151,7 +152,7 @@ async def test_user_can_create_regular_user(client, db):
     user_data = {
         "username": f"user_{unique_id}",
         "email": f"user_{unique_id}@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
 
     # Create user
@@ -161,7 +162,7 @@ async def test_user_can_create_regular_user(client, db):
     # Login as user
     login_response = await client.post(
         "/api/v1/auth/token",
-        data={"username": user_data["username"], "password": "password123"},
+        data={"username": user_data["username"], "password": "Kestrel-Meadow-4821"},
     )
 
     assert login_response.status_code == 200
@@ -172,17 +173,15 @@ async def test_user_can_create_regular_user(client, db):
     new_user_data = {
         "username": f"new_user_{unique_id_2}",
         "email": f"new_{unique_id_2}@example.com",
-        "password": "userpass",
+        "password": "Saffron-Harbor-2846",
         "role": UserRole.USER.value,  # Regular user role
     }
 
     headers = {"Authorization": f"Bearer {token}"}
     response = await client.post("/api/v1/users/", json=new_user_data, headers=headers)
 
-    assert response.status_code == 201
-    data = response.json()
-    assert data["username"] == new_user_data["username"]
-    assert data["role"] == UserRole.USER.value
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Not enough permissions to create users"
 
 
 @pytest.mark.asyncio
@@ -195,7 +194,7 @@ async def test_regular_user_cannot_create_admin(client, db):
     user_data = {
         "username": f"regularuser_{unique_id}",
         "email": f"regular_{unique_id}@example.com",
-        "password": "userpass",
+        "password": "Saffron-Harbor-2846",
     }
 
     await client.post("/api/v1/users/", json=user_data)
@@ -205,7 +204,7 @@ async def test_regular_user_cannot_create_admin(client, db):
 
     login_response = await client.post(
         "/api/v1/auth/token",
-        data={"username": user_data["username"], "password": "userpass"},
+        data={"username": user_data["username"], "password": "Saffron-Harbor-2846"},
     )
     token = login_response.json()["access_token"]
 
@@ -213,7 +212,7 @@ async def test_regular_user_cannot_create_admin(client, db):
     new_user_data = {
         "username": "attempted_admin",
         "email": "attempted@example.com",
-        "password": "adminpass",
+        "password": "Cobalt-Thistle-6194",
         "role": UserRole.ADMIN.value,
     }
 
@@ -229,13 +228,13 @@ async def test_login_returns_refresh_token(client, db):
     user_data = {
         "username": "refreshloginuser",
         "email": "refreshlogin@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
     await client.post("/api/v1/users/", json=user_data)
 
     response = await client.post(
         "/api/v1/auth/token",
-        data={"username": "refreshloginuser", "password": "password123"},
+        data={"username": "refreshloginuser", "password": "Kestrel-Meadow-4821"},
     )
 
     assert response.status_code == 200
@@ -251,13 +250,13 @@ async def test_refresh_token_endpoint(client, db):
     user_data = {
         "username": "refreshuser",
         "email": "refresh@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
     await client.post("/api/v1/users/", json=user_data)
 
     login_response = await client.post(
         "/api/v1/auth/token",
-        data={"username": "refreshuser", "password": "password123"},
+        data={"username": "refreshuser", "password": "Kestrel-Meadow-4821"},
     )
     refresh_token = login_response.json()["refresh_token"]
 
@@ -288,13 +287,13 @@ async def test_refresh_token_reuse_rejected(client, db):
     user_data = {
         "username": "reuseuser",
         "email": "reuse@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
     await client.post("/api/v1/users/", json=user_data)
 
     login_response = await client.post(
         "/api/v1/auth/token",
-        data={"username": "reuseuser", "password": "password123"},
+        data={"username": "reuseuser", "password": "Kestrel-Meadow-4821"},
     )
     old_refresh = login_response.json()["refresh_token"]
 
@@ -315,13 +314,13 @@ async def test_logout_endpoint(client, db):
     user_data = {
         "username": "logoutuser",
         "email": "logout@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
     await client.post("/api/v1/users/", json=user_data)
 
     login_response = await client.post(
         "/api/v1/auth/token",
-        data={"username": "logoutuser", "password": "password123"},
+        data={"username": "logoutuser", "password": "Kestrel-Meadow-4821"},
     )
     tokens = login_response.json()
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
@@ -346,17 +345,17 @@ async def test_invalidate_endpoint(client, db):
     user_data = {
         "username": "invalidateuser",
         "email": "invalidate@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
     await client.post("/api/v1/users/", json=user_data)
 
     login1 = await client.post(
         "/api/v1/auth/token",
-        data={"username": "invalidateuser", "password": "password123"},
+        data={"username": "invalidateuser", "password": "Kestrel-Meadow-4821"},
     )
     login2 = await client.post(
         "/api/v1/auth/token",
-        data={"username": "invalidateuser", "password": "password123"},
+        data={"username": "invalidateuser", "password": "Kestrel-Meadow-4821"},
     )
 
     tokens1 = login1.json()
@@ -382,7 +381,7 @@ async def test_invalidate_endpoint(client, db):
     # But user can still log in again
     login3 = await client.post(
         "/api/v1/auth/token",
-        data={"username": "invalidateuser", "password": "password123"},
+        data={"username": "invalidateuser", "password": "Kestrel-Meadow-4821"},
     )
     assert login3.status_code == 200
     headers3 = {"Authorization": f"Bearer {login3.json()['access_token']}"}
@@ -396,14 +395,14 @@ async def test_refresh_token_with_deactivated_user(client, db):
     user_data = {
         "username": "deactrefresh",
         "email": "deactrefresh@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
     create_resp = await client.post("/api/v1/users/", json=user_data)
     user_id = create_resp.json()["id"]
 
     await client.post(
         "/api/v1/auth/token",
-        data={"username": "deactrefresh", "password": "password123"},
+        data={"username": "deactrefresh", "password": "Kestrel-Meadow-4821"},
     )
     # Deactivate user directly via DB
     from sqlmodel import select

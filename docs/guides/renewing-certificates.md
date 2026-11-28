@@ -68,3 +68,15 @@ When the caller is a [service account](service-accounts.md), the **current**
 If the policy has tightened so the original parameters no longer comply, renewal
 is rejected with the same structured `policy_violation` error as first issuance.
 This means a policy change retroactively governs renewals.
+
+Because first issuance is also evaluated against the effective SANs (including a
+Common Name auto-added as a DNS SAN), a certificate issued under an unchanged
+policy remains renewable.
+
+!!! note "Certificates issued by 0.4.0 and earlier"
+    Those versions could add the Common Name as a DNS SAN *after* the policy
+    check, so a certificate issued under a policy that denies DNS SANs may carry
+    a DNS SAN the policy never approved. Renewal inherits the predecessor's
+    actual SANs, so such a certificate still fails renewal with
+    `field: san_dns_patterns`. Re-issue it once (e.g. with only
+    `san_ip_addresses`) instead of widening the policy.

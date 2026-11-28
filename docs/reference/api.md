@@ -89,14 +89,24 @@ Invalidate all refresh tokens for the authenticated user, signing out every acti
 
 Create a new user.
 
-- **Auth required:** Optional (required for admin/superuser roles after first user)
+- **Auth required:** Optional for the first user (bootstrap) and for open self-registration; otherwise Admin or Superuser
 - **Content-Type:** `application/json`
+
+| Caller | Allowed roles | Resulting `organization_id` |
+|--------|---------------|-----------------------------|
+| First user (no users exist) | Any | As requested |
+| Superuser | Any | As requested |
+| Admin | `user` | Admin's own org (default when omitted); any other org → `403` |
+| User | — | `403` |
+| Unauthenticated (`ALLOW_UNAUTHENTICATED_REGISTRATION=true`) | `user` | Always `null` (request value ignored) |
+
+A supplied bearer token must be valid: an invalid, expired, or revoked token returns `401` instead of falling back to anonymous registration.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `username` | `string` | Yes | — | Unique username |
 | `email` | `string` | Yes | — | Unique email |
-| `password` | `string` | Yes | — | Min 8 characters |
+| `password` | `string` | Yes | — | Must satisfy the [password policy](../security/authentication.md#password-policy) |
 | `role` | `string` | No | `user` | `superuser`, `admin`, `user` |
 | `organization_id` | `int` | No | `null` | Organization to assign |
 | `can_create_ca` | `bool` | No | `false` | Capability flag |
@@ -107,7 +117,10 @@ Create a new user.
 
 **Response** `201`: User object.
 
-**Errors:** `400` — username/email already exists. `403` — insufficient permissions for role.
+**Errors:** `400` — username/email already exists, or the caller's account is inactive. `401` — invalid bearer token. `403` — caller may not create users, may not create the requested role, may not create users in the requested organization, or unauthenticated registration is disabled. `422` — validation error, including password policy violations.
+
+!!! note "Anti-enumeration"
+    Authentication, the registration policy, and role/organization authorization are all checked **before** username/email uniqueness. A caller who is not allowed to create the account always receives the same `403`, whether or not the supplied username or email exists. The `400` duplicate errors are only returned to callers who are permitted to create the account (superusers, admins within their own organization, or anyone when `ALLOW_UNAUTHENTICATED_REGISTRATION=true`).
 
 ### `GET /users/`
 
@@ -142,7 +155,7 @@ Get a user by ID.
 
 Update a user.
 
-- **Auth required:** Self (limited fields), Admin (same org), or Superuser
+- **Auth required:** Self (limited fields), Admin (non-superuser accounts in the same org), or Superuser
 - **Content-Type:** `application/json`
 
 | Field | Type | Who can set |
@@ -158,7 +171,7 @@ Update a user.
 | `can_export_private_key` | `bool` | Admin (same org), Superuser |
 | `can_delete_ca` | `bool` | Admin (same org), Superuser |
 
-**Response** `200`: Updated user object. **Errors:** `403`, `404`.
+**Response** `200`: Updated user object. **Errors:** `403`, `404`, `422` (validation error, including a new `password` that violates the [password policy](../security/authentication.md#password-policy)).
 
 ### `DELETE /users/{user_id}`
 
@@ -230,7 +243,7 @@ Delete an organization.
 
 Add a user to an organization.
 
-- **Auth required:** Admin in the organization, or Superuser
+- **Auth required:** Admin in the organization (only for users not in any organization, and never superusers), or Superuser
 
 **Response** `200`: Updated user object. **Errors:** `403`, `404`.
 
@@ -373,7 +386,7 @@ Issue a new certificate under the specified CA.
 | `san_ip_addresses` | `string[]` | No | — | IP SAN entries (server/dual-purpose only) |
 | `san_email_addresses` | `string[]` | No | — | Email SAN entries (client/dual-purpose only) |
 
-For `server` and `dual_purpose` certificates, if no DNS SANs are supplied the Common Name is auto-added as a DNS SAN. For `client` certificates, if no email SANs are supplied and the Common Name parses as an email address, it is auto-added. SAN type restrictions are enforced: servers reject email SANs, clients reject DNS and IP SANs.
+For `server` and `dual_purpose` certificates, if **no SANs of any kind** are supplied (DNS, IP, or email), the Common Name is auto-added as a DNS SAN — provided it is a valid DNS name (a CN with spaces or an IP literal is never put in a DNS SAN). When any SAN list is supplied (e.g. IP-only), the SANs are used verbatim and the Common Name is not added. For `client` certificates, if no email SANs are supplied and the Common Name parses as an email address, it is auto-added. SAN type restrictions are enforced: servers reject email SANs, clients reject DNS and IP SANs.
 
 **Response** `201`: Certificate detail (includes private key if generated). **Errors:** `400` (includes when CA has `allow_leaf_certs=false`, or when SAN types violate the certificate-type restrictions), `403`, `404`.
 
@@ -397,6 +410,8 @@ Sign an externally-generated Certificate Signing Request. The submitted CSR's su
 | `san_dns_names` | `string[]` | No | From CSR | Override DNS SANs |
 | `san_ip_addresses` | `string[]` | No | From CSR | Override IP SANs |
 | `san_email_addresses` | `string[]` | No | From CSR | Override email SANs |
+
+After merging CSR values and overrides, the same SAN auto-population rule as `POST /certificates/` applies: the Common Name is added as a DNS SAN only if no SANs of any kind remain and it is a valid DNS name.
 
 Exactly one of `ca_id` or `ca_name` must be provided. The `certificate` service never returns a private key for this endpoint — the client retains the key it generated alongside the CSR.
 
@@ -601,7 +616,9 @@ Delete the policy (reverts the account to deny-all). **Auth:** admin.
 ### Issuance error codes (service accounts)
 
 When the caller is a service account, `POST /api/v1/certificates/` and
-`POST /api/v1/certificates/sign-csr` enforce the account's policy. Errors carry
+`POST /api/v1/certificates/sign-csr` (and `POST /api/v1/certificates/{id}/renew`)
+enforce the account's policy against the **effective** certificate parameters,
+including a Common Name that is auto-added as a DNS SAN. Errors carry
 a structured `detail`:
 
 | Status | `detail.code` | When |

@@ -217,8 +217,19 @@ class OrganizationService:
         if admin_user.role == UserRole.SUPERUSER:
             return True
 
-        return (
+        if not (
             admin_user.role == UserRole.ADMIN and admin_user.organization_id == org_id
+        ):
+            return False
+
+        # An org admin may only bring in unassigned users (or re-add their
+        # own members); they must not pull another tenant's user, or a
+        # superuser, into their organization (issue #69).
+        target = await self.db.get(User, user_id)
+        return (
+            target is not None
+            and target.role != UserRole.SUPERUSER
+            and target.organization_id in (None, org_id)
         )
 
     async def user_can_remove_user_from_organization(

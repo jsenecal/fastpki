@@ -200,11 +200,12 @@ stored; the plaintext (`fpki_sa_<public_id>.<secret>`) is shown once at creation
 | `expires_at` | `datetime` | Nullable | Expiry (`null` = non-expiring) |
 | `revoked` | `bool` | Default `false` | Whether revoked |
 
-!!! note "Resource ownership"
+!!! note "Creator attribution"
     `CertificateAuthority` and `Certificate` carry a nullable
     `created_by_service_account_id` (FK → `service_accounts.id`) alongside
-    `created_by_user_id`, so a resource created by a service account is owned by
-    it for authorization purposes.
+    `created_by_user_id`, recording which principal created the resource. These
+    fields are for attribution and auditing only; they grant no access (see
+    [Authorization](../security/authorization.md)).
 
 ### `IssuancePolicy`
 

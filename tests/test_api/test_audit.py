@@ -218,13 +218,13 @@ async def test_login_success_generates_audit_log(client, db):
     user_data = {
         "username": "audit_login_user",
         "email": "auditlogin@example.com",
-        "password": "password123",
+        "password": "Kestrel-Meadow-4821",
     }
     await client.post(f"{settings.API_V1_STR}/users/", json=user_data)
 
     response = await client.post(
         f"{settings.API_V1_STR}/auth/token",
-        data={"username": "audit_login_user", "password": "password123"},
+        data={"username": "audit_login_user", "password": "Kestrel-Meadow-4821"},
     )
     assert response.status_code == 200
 

@@ -47,7 +47,7 @@ uv tool install fastpki
 fastpki config set server.url http://localhost:8000
 
 # Login
-fastpki auth login -u admin -p securepassword
+fastpki auth login -u admin -p tangerine-orbit-velvet-42
 
 # Use it
 fastpki ca list

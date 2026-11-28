@@ -48,7 +48,8 @@ async def test_service_account_can_create_certificate(db, org, ca):
     await IssuancePolicyService(db).set_policy(
         sa.id,
         cn_patterns=["*.example.com"],
-        san_dns_patterns=[],
+        # The CN is auto-added as a DNS SAN, so the policy must allow it (#53).
+        san_dns_patterns=["*.example.com"],
         san_ip_cidrs=[],
         san_email_domains=[],
         allowed_ca_ids=[ca.id],

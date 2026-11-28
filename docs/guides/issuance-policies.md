@@ -71,8 +71,21 @@ fastpki service-account policy clear 1   # reverts to deny-all
 
 When a service account calls `POST /certificates/` or
 `POST /certificates/sign-csr`, the policy is evaluated against the **effective**
-issuance parameters (for `sign-csr`, the CN/SANs resolved from the CSR after any
-overrides). Constraints are checked independently and the **first** failure
+issuance parameters — exactly what will be in the issued certificate. For
+`sign-csr` that is the CN/SANs resolved from the CSR after any overrides, and
+in all cases it includes the Common Name when it is
+[auto-added as a DNS SAN](certificates.md#subject-alternative-names) (server /
+dual-purpose certificates requested with no SANs at all). Renewals are
+evaluated the same way, so anything a policy allowed at issuance stays
+renewable until the policy changes.
+
+!!! tip "Policies that deny DNS SANs"
+    With `san_dns_patterns: []`, a server request with **no** SANs is rejected
+    with `field: san_dns_patterns` because the Common Name would become a DNS
+    SAN. Request the SANs you need explicitly instead — e.g. only
+    `san_ip_addresses` — and no DNS SAN is added.
+
+Constraints are checked independently and the **first** failure
 short-circuits with a structured error:
 
 ```json

@@ -14,13 +14,31 @@ UTC = ZoneInfo("UTC")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    # bcrypt only uses the first 72 bytes and bcrypt>=5 raises ValueError on
+    # longer input. Truncate (as bcrypt<5 did implicitly) so an over-long login
+    # attempt is a normal mismatch rather than a 500, and hashes created by
+    # older bcrypt from >72-byte passwords still verify.
     return bcrypt.checkpw(
-        plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+        plain_password.encode("utf-8")[:72], hashed_password.encode("utf-8")
     )
 
 
 def get_password_hash(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+# Hash verified when the user is unknown or inactive, so every login attempt
+# costs one bcrypt check and response time does not reveal which usernames
+# exist. Built lazily via get_password_hash so its cost factor tracks the
+# real hashing path.
+_DUMMY_PASSWORD_HASH: str | None = None
+
+
+def _get_dummy_password_hash() -> str:
+    global _DUMMY_PASSWORD_HASH
+    if _DUMMY_PASSWORD_HASH is None:
+        _DUMMY_PASSWORD_HASH = get_password_hash("fastpki-dummy-password")
+    return _DUMMY_PASSWORD_HASH
 
 
 class UserService:
@@ -158,12 +176,11 @@ class UserService:
         logger.debug("Authenticating user: %s", username)
         user = await self.get_user_by_username(username)
 
-        if not user:
-            logger.debug("User not found: %s", username)
-            return None
-
-        if not user.is_active:
-            logger.debug("User is inactive: %s", username)
+        if not user or not user.is_active:
+            # Burn the same bcrypt cost as a real check to avoid a timing
+            # oracle on username existence / account state.
+            verify_password(password, _get_dummy_password_hash())
+            logger.debug("User not found or inactive: %s", username)
             return None
 
         if not verify_password(password, user.hashed_password):

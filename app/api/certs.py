@@ -96,13 +96,22 @@ async def create_certificate(
     except PermissionDeniedError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
 
+    # Evaluate the policy against the SANs the certificate will actually carry
+    # (including CN auto-population), then issue exactly those.
+    sans = CertificateService.effective_san_names(
+        cert_in.certificate_type,
+        cert_in.common_name,
+        cert_in.san_dns_names,
+        cert_in.san_ip_addresses,
+        cert_in.san_email_addresses,
+    )
     await _enforce_issuance_policy(
         db,
         principal,
         common_name=cert_in.common_name,
-        san_dns_names=cert_in.san_dns_names,
-        san_ip_addresses=cert_in.san_ip_addresses,
-        san_email_addresses=cert_in.san_email_addresses,
+        san_dns_names=sans.san_dns_names,
+        san_ip_addresses=sans.san_ip_addresses,
+        san_email_addresses=sans.san_email_addresses,
         ca_id=ca_id,
         certificate_type=cert_in.certificate_type,
         valid_days=cert_in.valid_days,
@@ -121,9 +130,9 @@ async def create_certificate(
             include_private_key=cert_in.include_private_key,
             organization_id=principal.organization_id,
             base_url=base_url,
-            san_dns_names=cert_in.san_dns_names,
-            san_ip_addresses=cert_in.san_ip_addresses,
-            san_email_addresses=cert_in.san_email_addresses,
+            san_dns_names=sans.san_dns_names,
+            san_ip_addresses=sans.san_ip_addresses,
+            san_email_addresses=sans.san_email_addresses,
             **principal.creator_fields(),
         )
     except LeafCertNotAllowedError as e:
@@ -202,6 +211,7 @@ async def sign_csr(
         try:
             effective = cert_service.resolve_csr_fields(
                 csr_in.csr,
+                certificate_type=csr_in.certificate_type,
                 common_name=csr_in.common_name,
                 subject_dn=csr_in.subject_dn,
                 san_dns_names=csr_in.san_dns_names,

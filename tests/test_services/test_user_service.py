@@ -220,3 +220,85 @@ async def test_delete_user(db):
     # Verify user is deleted
     user = await user_service.get_user_by_id(created_user.id)
     assert user is None
+
+
+class TestAuthenticateTimingOracle:
+    """authenticate_user must run exactly one password verification on every
+    path so response time does not reveal whether a username exists (#70)."""
+
+    @pytest.fixture
+    def verify_spy(self, monkeypatch):
+        import app.services.user as user_module
+
+        calls: list[tuple[str, str]] = []
+        real_verify = user_module.verify_password
+
+        def spy(plain_password: str, hashed_password: str) -> bool:
+            calls.append((plain_password, hashed_password))
+            return real_verify(plain_password, hashed_password)
+
+        monkeypatch.setattr(user_module, "verify_password", spy)
+        return calls
+
+    async def _make_user(self, db, *, active: bool = True):
+        user_service = UserService(db)
+        user = await user_service.create_user(
+            username="timinguser",
+            email="timing@example.com",
+            password="correctpassword",
+        )
+        if not active:
+            user.is_active = False
+            db.add(user)
+            await db.commit()
+            await db.refresh(user)
+        return user_service, user
+
+    async def test_unknown_user_runs_verify_once(self, db, verify_spy):
+        user_service = UserService(db)
+        result = await user_service.authenticate_user("nosuchuser", "anypassword")
+        assert result is None
+        assert len(verify_spy) == 1
+        assert verify_spy[0][0] == "anypassword"
+
+    async def test_inactive_user_runs_verify_once(self, db, verify_spy):
+        user_service, user = await self._make_user(db, active=False)
+        verify_spy.clear()
+        result = await user_service.authenticate_user("timinguser", "correctpassword")
+        assert result is None
+        assert len(verify_spy) == 1
+        # Must not reveal the real hash outcome for inactive accounts.
+        assert verify_spy[0][1] != user.hashed_password
+
+    async def test_wrong_password_runs_verify_once(self, db, verify_spy):
+        user_service, user = await self._make_user(db)
+        verify_spy.clear()
+        result = await user_service.authenticate_user("timinguser", "wrongpassword")
+        assert result is None
+        assert verify_spy == [("wrongpassword", user.hashed_password)]
+
+    async def test_correct_password_runs_verify_once(self, db, verify_spy):
+        user_service, user = await self._make_user(db)
+        verify_spy.clear()
+        result = await user_service.authenticate_user("timinguser", "correctpassword")
+        assert result is not None
+        assert result.id == user.id
+        assert verify_spy == [("correctpassword", user.hashed_password)]
+
+    def test_dummy_hash_is_cached_and_uses_real_hasher(self, monkeypatch):
+        import app.services.user as user_module
+
+        monkeypatch.setattr(user_module, "_DUMMY_PASSWORD_HASH", None)
+        hash_calls: list[str] = []
+        real_hash = user_module.get_password_hash
+
+        def spy_hash(password: str) -> str:
+            hash_calls.append(password)
+            return real_hash(password)
+
+        monkeypatch.setattr(user_module, "get_password_hash", spy_hash)
+        first = user_module._get_dummy_password_hash()
+        second = user_module._get_dummy_password_hash()
+        assert first == second
+        assert len(hash_calls) == 1
+        assert first.startswith("$2")

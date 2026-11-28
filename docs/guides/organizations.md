@@ -81,6 +81,8 @@ curl -s -X POST http://localhost:8000/api/v1/organizations/1/users/2 \
 
 **Required role:** Superuser (any org), or Admin in the target organization.
 
+An admin can only add users who are not yet in any organization (for example, self-registered accounts). Moving a user out of another organization, or adding a superuser, requires a superuser.
+
 ## Remove a User from an Organization
 
 ```bash

@@ -138,3 +138,33 @@ async def test_org_admin_cannot_remove_user_from_other_org(
     )
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.asyncio
+async def test_org_admin_cannot_pull_user_from_other_org(
+    admin_client_for: AsyncClient,
+    admin_user: User,
+    other_org_member: User,
+):
+    """Issue #69: an org admin must not move another tenant's user into
+    their own organization."""
+    response = await admin_client_for.post(
+        f"{settings.API_V1_STR}/organizations/"
+        f"{admin_user.organization_id}/users/{other_org_member.id}"
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.asyncio
+async def test_org_admin_cannot_add_superuser_to_own_org(
+    admin_client_for: AsyncClient,
+    admin_user: User,
+    superuser: User,
+):
+    response = await admin_client_for.post(
+        f"{settings.API_V1_STR}/organizations/"
+        f"{admin_user.organization_id}/users/{superuser.id}"
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN

@@ -114,3 +114,42 @@ async def test_renewed_to_ids(db, ca):
     )
     r1 = await svc.renew_certificate(original.id)
     assert await svc.get_renewed_to_ids(original.id) == [r1.id]
+
+
+@pytest.mark.asyncio
+async def test_renew_ip_only_cert_stays_ip_only(db, ca):
+    """Renewing an IP-only cert must not grow a CN DNS SAN (issue #53)."""
+    svc = CertificateService(db)
+    original = await svc.create_certificate(
+        ca_id=ca.id,
+        common_name="ip-only.example.com",
+        subject_dn="CN=ip-only.example.com",
+        certificate_type=CertificateType.SERVER,
+        valid_days=30,
+        san_ip_addresses=["10.24.0.5"],
+    )
+    params = svc.inherited_renewal_params(original)
+    assert params.san_dns_names is None
+    assert params.san_ip_addresses == ["10.24.0.5"]
+
+    renewed = await svc.renew_certificate(original.id)
+    dns, ips, _ = svc.extract_cert_san_names(renewed.certificate)
+    assert dns == []
+    assert ips == ["10.24.0.5"]
+
+
+@pytest.mark.asyncio
+async def test_renew_cert_with_non_dns_cn_stays_san_less(db, ca):
+    """A CN that is not a DNS name is never turned into a DNS SAN on renewal."""
+    svc = CertificateService(db)
+    original = await svc.create_certificate(
+        ca_id=ca.id,
+        common_name="My Web Server",
+        subject_dn="CN=My Web Server",
+        certificate_type=CertificateType.SERVER,
+        valid_days=30,
+    )
+    assert svc.extract_cert_san_names(original.certificate) == ([], [], [])
+
+    renewed = await svc.renew_certificate(original.id)
+    assert svc.extract_cert_san_names(renewed.certificate) == ([], [], [])
